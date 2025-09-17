@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  # 后端 Flask 服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: darts_backend
+    ports:
+      - "5001:5001"
+    environment:
+      - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+      - PYTHONIOENCODING=utf-8
+    volumes:
+      # 可选：挂载数据目录用于持久化上传的文件
+      - ./data:/app/data
+    networks:
+      - darts_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # 前端 Nginx 服务
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: darts_frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - darts_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  darts_network:
+    driver: bridge
+
+volumes:
+  # 数据持久化卷（可选）
+  data_volume:
+    driver: local

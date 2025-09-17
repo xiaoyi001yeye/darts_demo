@@ -1,0 +1,419 @@
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+import pandas as pd
+from darts import TimeSeries
+from darts.models import ARIMA
+from darts.metrics import mape, rmse, mae, mse
+from darts.utils.statistics import check_seasonality, plot_acf, plot_pacf
+import json
+import numpy as np
+from datetime import datetime, timedelta
+import os
+import warnings
+import glob
+import sys
+
+# 设置系统编码为UTF-8
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8')
+    
+warnings.filterwarnings('ignore')
+
+app = Flask(__name__)
+# 配置JSON编码，确保中文正常显示
+app.config['JSON_AS_ASCII'] = False
+app.config['JSONIFY_MIMETYPE'] = 'application/json;charset=utf-8'
+CORS(app)  # 解决跨域问题
+
+# 全局变量存储模型和数据
+models_cache = {}
+data_cache = {}
+trained_model = None
+train_series = None
+val_series = None
+
+def load_metric_data():
+    """加载存储空间使用率数据"""
+    # 查找data目录下的所有CSV文件
+    # 支持多种路径：容器内部路径和本地开发路径
+    data_dir = os.getenv('DATA_DIR', '/app/data')
+    if not os.path.exists(data_dir):
+        # 如果容器内路径不存在，尝试本地开发路径
+        local_data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
+        if os.path.exists(local_data_dir):
+            data_dir = local_data_dir
+        else:
+            raise FileNotFoundError(f"数据目录不存在: {data_dir} 和 {local_data_dir}")
+    
+    csv_files = glob.glob(os.path.join(data_dir, '*.csv'))
+    
+    if not csv_files:
+        raise FileNotFoundError(f"data目录中没有找到CSV文件: {data_dir}")
+    
+    # 读取所有CSV文件
+    all_data = []
+    for file_path in csv_files:
+        try:
+            df = pd.read_csv(file_path)
+            all_data.append(df)
+        except Exception as e:
+            print(f"警告: 无法读取文件 {file_path}: {e}")
+    
+    if not all_data:
+        raise FileNotFoundError("没有成功读取任何CSV文件")
+    
+    # 合并所有数据
+    df = pd.concat(all_data, ignore_index=True)
+    
+    # 转换时间列
+    df['datetime'] = pd.to_datetime(df['time'])
+    
+    # 过滤有效数据 (value > 0，去除连接失败的数据)
+    valid_data = df[df['value'] > 0].copy()
+    
+    if valid_data.empty:
+        raise ValueError("没有找到有效的数据 (value > 0)")
+    
+    # 选择数据最完整的设备
+    device_counts = valid_data['ci_id'].value_counts()
+    best_device = device_counts.index[0]
+    
+    # 获取最佳设备的数据
+    device_data = valid_data[valid_data['ci_id'] == best_device].copy()
+    device_data = device_data.sort_values('datetime')
+    
+    # 按小时聚合数据（减少数据量，提高预测效果）
+    device_data.set_index('datetime', inplace=True)
+    hourly_data = device_data['value'].resample('H').mean().dropna()
+    
+    return hourly_data, best_device
+
+def prepare_arima_data(series, train_ratio=0.8):
+    """准备ARIMA模型的训练和验证数据"""
+    # 转换为Darts TimeSeries
+    ts = TimeSeries.from_series(series)
+    
+    # 划分训练集和验证集
+    train_size = int(len(ts) * train_ratio)
+    train_series = ts[:train_size]
+    val_series = ts[train_size:]
+    
+    return train_series, val_series
+
+@app.route('/api/train', methods=['POST'])
+def train_model():
+    """训练ARIMA模型"""
+    global trained_model, train_series, val_series
+    
+    try:
+        # 获取参数
+        data = request.json if request.json else {}
+        p = int(data.get('p', 2))  # ARIMA的p参数
+        d = int(data.get('d', 1))  # ARIMA的d参数
+        q = int(data.get('q', 2))  # ARIMA的q参数
+        train_ratio = float(data.get('train_ratio', 0.8))
+        
+        # 加载数据
+        series_data, device_id = load_metric_data()
+        
+        # 准备训练数据
+        train_series, val_series = prepare_arima_data(series_data, train_ratio)
+        
+        # 创建并训练ARIMA模型
+        model = ARIMA(p=p, d=d, q=q)
+        model.fit(train_series)
+        trained_model = model
+        
+        # 在验证集上评估
+        if len(val_series) > 0:
+            val_forecast = model.predict(len(val_series))
+            
+            # 计算评估指标
+            mape_score = float(mape(val_series, val_forecast))
+            rmse_score = float(rmse(val_series, val_forecast))
+            mae_score = float(mae(val_series, val_forecast))
+            mse_score = float(mse(val_series, val_forecast))
+        else:
+            val_forecast = None
+            mape_score = rmse_score = mae_score = mse_score = None
+        
+        # 准备响应数据
+        response = {
+            'success': True,
+            'message': '模型训练完成',
+            'model_params': {
+                'p': p,
+                'd': d, 
+                'q': q,
+                'model_type': 'ARIMA'
+            },
+            'data_info': {
+                'device_id': device_id,
+                'total_points': len(series_data),
+                'train_points': len(train_series),
+                'val_points': len(val_series),
+                'data_frequency': 'hourly',
+                'date_range': {
+                    'start': series_data.index.min().strftime('%Y-%m-%d %H:%M:%S'),
+                    'end': series_data.index.max().strftime('%Y-%m-%d %H:%M:%S')
+                }
+            },
+            'training_data': {
+                'dates': train_series.time_index.strftime('%Y-%m-%d %H:%M:%S').tolist(),
+                'values': train_series.values().flatten().tolist()
+            },
+            'validation_data': {
+                'dates': val_series.time_index.strftime('%Y-%m-%d %H:%M:%S').tolist() if len(val_series) > 0 else [],
+                'values': val_series.values().flatten().tolist() if len(val_series) > 0 else [],
+                'forecast': val_forecast.values().flatten().tolist() if val_forecast is not None else []
+            },
+            'metrics': {
+                'mape': mape_score,
+                'rmse': rmse_score,
+                'mae': mae_score,
+                'mse': mse_score
+            }
+        }
+        
+        return jsonify(response)
+    
+    except Exception as e:
+        return jsonify({'error': f'训练模型时出错: {str(e)}'}), 500
+
+@app.route('/api/predict', methods=['POST'])
+def predict():
+    """使用训练好的模型进行预测"""
+    global trained_model, train_series
+    
+    try:
+        if trained_model is None:
+            return jsonify({'error': '请先训练模型'}), 400
+        
+        # 获取预测参数
+        data = request.json if request.json else {}
+        forecast_periods = int(data.get('periods', 24))  # 默认预测24小时
+        
+        # 进行预测
+        forecast = trained_model.predict(forecast_periods)
+        
+        # 计算预测的置信区间（简单估计）
+        forecast_values = forecast.values().flatten()
+        
+        # 基于训练数据的标准差估计置信区间
+        train_std = np.std(train_series.values())
+        confidence_lower = forecast_values - 1.96 * train_std
+        confidence_upper = forecast_values + 1.96 * train_std
+        
+        # 准备响应数据
+        response = {
+            'success': True,
+            'forecast': {
+                'dates': forecast.time_index.strftime('%Y-%m-%d %H:%M:%S').tolist(),
+                'values': forecast_values.tolist(),
+                'confidence_lower': confidence_lower.tolist(),
+                'confidence_upper': confidence_upper.tolist()
+            },
+            'forecast_info': {
+                'periods': forecast_periods,
+                'frequency': 'hourly',
+                'model_type': 'ARIMA'
+            }
+        }
+        
+        return jsonify(response)
+    
+    except Exception as e:
+        return jsonify({'error': f'预测时出错: {str(e)}'}), 500
+
+@app.route('/api/forecast', methods=['POST'])
+def forecast():
+    """完整的训练和预测流程（向后兼容）"""
+    try:
+        # 获取前端传递的参数
+        data = request.json if request.json else {}
+        forecast_periods = int(data.get('periods', 24))
+        p = int(data.get('p', 2))
+        d = int(data.get('d', 1)) 
+        q = int(data.get('q', 2))
+        train_ratio = float(data.get('train_ratio', 0.8))
+        
+        # 加载数据
+        series_data, device_id = load_metric_data()
+        
+        # 准备训练数据
+        train_series, val_series = prepare_arima_data(series_data, train_ratio)
+        
+        # 创建并训练ARIMA模型
+        model = ARIMA(p=p, d=d, q=q)
+        model.fit(train_series)
+        
+        # 预测
+        forecast = model.predict(forecast_periods)
+        
+        # 在验证集上评估（如果有足够的验证数据）
+        if len(val_series) >= forecast_periods:
+            val_forecast = model.predict(len(val_series))
+            actual = val_series
+            
+            mape_score = float(mape(actual, val_forecast))
+            rmse_score = float(rmse(actual, val_forecast))
+            mae_score = float(mae(actual, val_forecast))
+            mse_score = float(mse(actual, val_forecast))
+        else:
+            val_forecast = None
+            mape_score = rmse_score = mae_score = mse_score = None
+        
+        # 准备响应数据
+        response = {
+            'historical': {
+                'dates': train_series.time_index.strftime('%Y-%m-%d %H:%M:%S').tolist(),
+                'values': train_series.values().flatten().tolist()
+            },
+            'forecast': {
+                'dates': forecast.time_index.strftime('%Y-%m-%d %H:%M:%S').tolist(),
+                'values': forecast.values().flatten().tolist()
+            },
+            'validation': {
+                'dates': val_series.time_index.strftime('%Y-%m-%d %H:%M:%S').tolist() if len(val_series) > 0 else [],
+                'values': val_series.values().flatten().tolist() if len(val_series) > 0 else [],
+                'forecast': val_forecast.values().flatten().tolist() if val_forecast is not None else []
+            },
+            'metrics': {
+                'mape': mape_score,
+                'rmse': rmse_score,
+                'mae': mae_score,
+                'mse': mse_score
+            },
+            'model_info': {
+                'type': 'ARIMA',
+                'parameters': f'ARIMA({p},{d},{q})',
+                'device_id': device_id,
+                'train_size': len(train_series),
+                'val_size': len(val_series),
+                'forecast_periods': forecast_periods,
+                'data_frequency': 'hourly'
+            }
+        }
+        
+        return jsonify(response)
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/models', methods=['GET'])
+def get_models():
+    """获取可用模型列表"""
+    models = [
+        {
+            'id': 'arima', 
+            'name': 'ARIMA (自回归积分滑动平均)', 
+            'description': '专用于存储空间使用率预测的ARIMA模型',
+            'parameters': {
+                'p': {'default': 2, 'min': 0, 'max': 5, 'description': '自回归阶数'},
+                'd': {'default': 1, 'min': 0, 'max': 2, 'description': '差分阶数'},
+                'q': {'default': 2, 'min': 0, 'max': 5, 'description': '移动平均阶数'}
+            }
+        }
+    ]
+    return jsonify(models)
+
+@app.route('/api/data/info', methods=['GET'])
+def get_data_info():
+    """获取数据信息"""
+    try:
+        series_data, device_id = load_metric_data()
+        
+        response = {
+            'device_id': device_id,
+            'total_points': len(series_data),
+            'date_range': {
+                'start': series_data.index.min().strftime('%Y-%m-%d %H:%M:%S'),
+                'end': series_data.index.max().strftime('%Y-%m-%d %H:%M:%S')
+            },
+            'frequency': 'hourly',
+            'statistics': {
+                'mean': float(series_data.mean()),
+                'std': float(series_data.std()),
+                'min': float(series_data.min()),
+                'max': float(series_data.max()),
+                'median': float(series_data.median())
+            }
+        }
+        
+        return jsonify({
+            "status": "success",
+            "data": response
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/data/preview', methods=['GET'])
+def preview_data():
+    """预览数据"""
+    try:
+        series_data, device_id = load_metric_data()
+        
+        # 返回最近100个数据点
+        preview_data = series_data.tail(100)
+        
+        # 转换为记录列表格式
+        records = []
+        for i in range(len(preview_data)):
+            records.append({
+                'time': preview_data.index[i].strftime('%Y-%m-%d %H:%M:%S'),
+                'ci_id': device_id,
+                'value': float(preview_data.iloc[i])
+            })
+        
+        response = {
+            'device_id': device_id,
+            'data': records,
+            'total_points': len(series_data),
+            'preview_points': len(preview_data),
+            'date_range': {
+                'start': series_data.index.min().strftime('%Y-%m-%d %H:%M:%S'),
+                'end': series_data.index.max().strftime('%Y-%m-%d %H:%M:%S')
+            }
+        }
+        
+        return jsonify({
+            "status": "success",
+            "data": response
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """健康检查接口"""
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.now().isoformat(),
+        'version': '1.0.0'
+    })
+
+if __name__ == '__main__':
+    print("启动存储空间使用率预测系统后端...")
+    print("后端服务地址: http://localhost:5001")
+    print("API文档:")
+    print("  GET  /api/health        - 健康检查")
+    print("  GET  /api/models        - 获取可用模型")
+    print("  POST /api/train         - 训练ARIMA模型")
+    print("  POST /api/predict       - 使用训练好的模型预测")
+    print("  POST /api/forecast      - 完整的训练和预测流程")
+    print("  GET  /api/data/info     - 获取数据信息")
+    print("  GET  /api/data/preview  - 预览数据")
+    print("\n数据文件: data/tb_metric_raw_free_space_ratio_202509161435.csv")
+    print("专门用于存储空间使用率的ARIMA时间序列预测")
+    
+    app.run(debug=True, port=5001, host='0.0.0.0')

@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>时间序列预测系统</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- 页面头部 -->
+        <header class="header">
+            <div class="header-content">
+                <h1><i class="fas fa-chart-line"></i> 时间序列预测系统</h1>
+                <p class="subtitle">基于 Darts 库的智能时间序列分析与预测平台</p>
+            </div>
+        </header>
+        
+        <!-- 主要内容区域 -->
+        <main class="main-content">
+            <!-- 控制面板 -->
+            <section class="control-panel">
+                <div class="panel-header">
+                    <h2><i class="fas fa-cogs"></i> 预测配置</h2>
+                </div>
+                
+                <div class="controls-grid">
+                    <!-- 模型选择 -->
+                    <div class="control-group">
+                        <label for="modelSelect">
+                            <i class="fas fa-brain"></i> 选择预测模型
+                        </label>
+                        <select id="modelSelect" class="form-control">
+                            <option value="">加载模型中...</option>
+                        </select>
+                        <small class="help-text">选择适合的预测算法</small>
+                    </div>
+                    
+                    <!-- 预测周期 -->
+                    <div class="control-group">
+                        <label for="periodsInput">
+                            <i class="fas fa-calendar-alt"></i> 预测周期
+                        </label>
+                        <input type="number" id="periodsInput" class="form-control" 
+                               placeholder="预测小时数" value="24" min="1" max="168">
+                        <small class="help-text">未来需要预测的小时数 (1-168)</small>
+                    </div>
+                    
+                    
+                    <!-- 操作按钮 -->
+                    <div class="control-group">
+                        <div class="button-group">
+                            <button id="trainBtn" class="btn btn-primary" onclick="trainModel()">
+                                <i class="fas fa-graduation-cap"></i> 训练模型
+                            </button>
+                            <button id="predictBtn" class="btn btn-secondary" onclick="runPrediction()" disabled>
+                                <i class="fas fa-crystal-ball"></i> 运行预测
+                            </button>
+                            <button id="forecastBtn" class="btn btn-success" onclick="runForecast()">
+                                <i class="fas fa-play"></i> 一键预测
+                            </button>
+                        </div>
+                        <small class="help-text">可以选择分步训练和预测，或一键完成</small>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- 数据上传状态 -->
+            <section id="uploadStatus" class="upload-status" style="display: none;">
+                <div class="status-content">
+                    <i class="fas fa-check-circle status-icon"></i>
+                    <div class="status-text">
+                        <h3>数据上传成功</h3>
+                        <p id="uploadInfo"></p>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- 数据信息展示区域 -->
+            <section class="data-info-section">
+                <div class="panel-header">
+                    <h2><i class="fas fa-database"></i> 数据信息</h2>
+                </div>
+                <div class="data-info-content">
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <div class="info-label">设备ID</div>
+                            <div id="deviceId" class="info-value">-</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">数据点总数</div>
+                            <div id="totalPoints" class="info-value">-</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">时间范围</div>
+                            <div id="timeRange" class="info-value">-</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">数据频率</div>
+                            <div id="frequency" class="info-value">-</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">平均值</div>
+                            <div id="meanValue" class="info-value">-</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">标准差</div>
+                            <div id="stdValue" class="info-value">-</div>
+                        </div>
+                    </div>
+                    <div class="data-preview">
+                        <h3><i class="fas fa-table"></i> 数据预览</h3>
+                        <div id="dataPreviewTable" class="preview-table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>时间</th>
+                                        <th>设备ID</th>
+                                        <th>存储使用率</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="previewTableBody">
+                                    <tr>
+                                        <td colspan="3" class="no-data">暂无数据</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 图表容器 -->
+            <section class="chart-section">
+                <div class="chart-header">
+                    <h2><i class="fas fa-chart-area"></i> 预测结果可视化</h2>
+                    <div class="chart-controls">
+                        <button class="btn btn-icon" onclick="toggleFullscreen()" title="全屏显示">
+                            <i class="fas fa-expand"></i>
+                        </button>
+                        <button class="btn btn-icon" onclick="downloadChart()" title="下载图表">
+                            <i class="fas fa-download"></i>
+                        </button>
+                    </div>
+                </div>
+                <div id="chartContainer" class="chart-container"></div>
+            </section>
+            
+            <!-- 评估指标 -->
+            <section class="metrics-section">
+                <div class="metrics-header">
+                    <h2><i class="fas fa-analytics"></i> 模型评估指标</h2>
+                </div>
+                <div id="metricsContainer" class="metrics-container">
+                    <div class="metrics-placeholder">
+                        <i class="fas fa-info-circle"></i>
+                        <p>运行预测后将显示评估指标</p>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- 模型信息 -->
+            <section class="info-section">
+                <div class="info-header">
+                    <h2><i class="fas fa-info-circle"></i> 模型信息</h2>
+                </div>
+                <div id="modelInfoContainer" class="info-container">
+                    <div class="info-placeholder">
+                        <i class="fas fa-lightbulb"></i>
+                        <p>选择模型并运行预测后将显示详细信息</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+        
+        <!-- 页脚 -->
+        <footer class="footer">
+            <div class="footer-content">
+                <p>&copy; 2024 时间序列预测系统 | 基于 Python Darts 库</p>
+                <div class="footer-links">
+                    <a href="#" onclick="showHelp()"><i class="fas fa-question-circle"></i> 使用帮助</a>
+                    <a href="#" onclick="showAbout()"><i class="fas fa-info"></i> 关于系统</a>
+                </div>
+            </div>
+        </footer>
+    </div>
+    
+    <!-- 加载遮罩 -->
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <p>正在运行预测，请稍候...</p>
+        </div>
+    </div>
+    
+    <!-- 消息提示 -->
+    <div id="messageContainer" class="message-container"></div>
+    
+    <!-- 帮助模态框 -->
+    <div id="helpModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-question-circle"></i> 使用帮助</h3>
+                <button class="modal-close" onclick="closeModal('helpModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <h4>快速入门</h4>
+                <ol>
+                    <li>选择预测模型（推荐从指数平滑开始）</li>
+                    <li>设置预测周期（建议30天以内）</li>
+                    <li>点击"运行预测"查看结果</li>
+                    <li>查看评估指标了解模型性能</li>
+                </ol>
+                
+                <h4>模型说明</h4>
+                <ul>
+                    <li><strong>指数平滑</strong>：适用于有趋势和季节性的数据</li>
+                    <li><strong>Prophet</strong>：Facebook开发，处理缺失数据能力强</li>
+                    <li><strong>ARIMA</strong>：经典统计模型，适用于平稳时间序列</li>
+                    <li><strong>Four Theta</strong>：适用于短期预测</li>
+                </ul>
+                
+                <h4>数据上传</h4>
+                <p>支持CSV格式，需包含时间和数值两列，时间格式：YYYY-MM-DD</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 关于模态框 -->
+    <div id="aboutModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-info"></i> 关于系统</h3>
+                <button class="modal-close" onclick="closeModal('aboutModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <h4>系统特性</h4>
+                <ul>
+                    <li>基于 Python Darts 时间序列库</li>
+                    <li>支持多种预测算法</li>
+                    <li>实时可视化预测结果</li>
+                    <li>自动模型评估与比较</li>
+                    <li>支持自定义数据上传</li>
+                </ul>
+                
+                <h4>技术栈</h4>
+                <ul>
+                    <li>后端：Python Flask + Darts</li>
+                    <li>前端：HTML5 + JavaScript + ECharts</li>
+                    <li>可视化：Apache ECharts</li>
+                </ul>
+                
+                <h4>版本信息</h4>
+                <p>版本：v1.0.0</p>
+                <p>更新日期：2024年</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- JavaScript 文件 -->
+    <script src="js/app.js"></script>
+    <script src="js/charts.js"></script>
+</body>
+</html>
