@@ -1,0 +1,86 @@
+# IDE 和编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统生成的文件
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# 日志文件
+*.log
+logs/
+
+# 依赖和构建目录
+node_modules/
+bower_components/
+.sass-cache/
+
+# 临时文件
+*.tmp
+*.temp
+
+# 开发工具
+*.map
+
+# Docker相关文件
+Dockerfile
+.dockerignore
+
+# 环境变量文件
+.env
+.env.local
+.env.production
+
+# 编辑器备份文件
+*~
+.*.sw[op]
+.sw[op]
+
+# npm 相关
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 可执行文件
+*.exe
+*.out
+*.app
+
+# coverage
+coverage/
+*.info
+
+# 编译输出
+dist/
+build/
+out/
+
+# 其他临时文件
+*.bak
+*.backup
+
+# 系统文件
+*.DS_Store
+*.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# 编辑器配置
+*~
+.*.sw[op]
+.sw[op]
+
+# 项目特定文件
+# 如果您在项目中生成了任何本地数据文件或缓存，也可以添加它们的模式匹配
+/.idea/vcs.xml

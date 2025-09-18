@@ -39,8 +39,6 @@ function setupEventListeners() {
         }
     });
     
-    // 文件上传事件
-    document.getElementById('fileInput').addEventListener('change', uploadFile);
 }
 
 // 加载可用模型
