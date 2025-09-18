@@ -15,6 +15,7 @@ async function initializeApp() {
         await loadDataInfo();  // 加载数据信息
         initializeChart();
         setupEventListeners();
+        initializeDateRangeControls(); // 初始化时间范围控件
         showMessage('系统初始化完成', 'success');
     } catch (error) {
         console.error('初始化失败:', error);
@@ -29,6 +30,9 @@ function setupEventListeners() {
         const selectedModel = this.value;
         if (selectedModel) {
             updateModelDescription(selectedModel);
+            loadModelParameters(selectedModel);  // 加载模型参数配置
+        } else {
+            clearModelParameters();  // 清除参数配置
         }
     });
     
@@ -39,6 +43,178 @@ function setupEventListeners() {
         }
     });
     
+}
+
+// 加载模型参数配置
+async function loadModelParameters(modelId) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/model/${modelId}/parameters`);
+        if (!response.ok) {
+            throw new Error(`HTTP错误: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        displayModelParameters(data.parameters);
+    } catch (error) {
+        console.error('加载模型参数失败:', error);
+        clearModelParameters();
+    }
+}
+
+// 显示模型参数配置
+function displayModelParameters(parameters) {
+    const container = document.getElementById('modelParametersContainer');
+    if (!container) return;
+    
+    let html = '<div class="parameters-grid">';
+    
+    for (const [key, param] of Object.entries(parameters)) {
+        html += `
+            <div class="control-group">
+                <label for="param_${key}">
+                    <i class="fas fa-sliders-h"></i> ${key}
+                </label>
+        `;
+        
+        if (param.type === 'select') {
+            html += `<select id="param_${key}" class="form-control">`;
+            param.options.forEach(option => {
+                const value = option === null ? 'none' : option;
+                const display = option === null ? '无' : option;
+                const selected = option === param.default ? 'selected' : '';
+                html += `<option value="${value}" ${selected}>${display}</option>`;
+            });
+            html += `</select>`;
+        } else {
+            const value = param.default !== undefined ? param.default : '';
+            const min = param.min !== undefined ? `min="${param.min}"` : '';
+            const max = param.max !== undefined ? `max="${param.max}"` : '';
+            html += `<input type="number" id="param_${key}" class="form-control" value="${value}" ${min} ${max}>`;
+        }
+        
+        html += `<small class="help-text">${param.description || ''}</small>
+            </div>
+        `;
+    }
+    
+    html += '</div>';
+    container.innerHTML = html;
+    container.style.display = 'block';
+}
+
+// 清除模型参数配置
+function clearModelParameters() {
+    const container = document.getElementById('modelParametersContainer');
+    if (container) {
+        container.innerHTML = '';
+        container.style.display = 'none';
+    }
+}
+
+// 获取模型参数值
+function getModelParameters() {
+    const container = document.getElementById('modelParametersContainer');
+    if (!container || container.style.display === 'none') {
+        return {};
+    }
+    
+    const parameters = {};
+    const inputs = container.querySelectorAll('input, select');
+    
+    inputs.forEach(input => {
+        const key = input.id.replace('param_', '');
+        if (input.type === 'number') {
+            parameters[key] = parseFloat(input.value) || 0;
+        } else {
+            parameters[key] = input.value === 'none' ? null : input.value;
+        }
+    });
+    
+    // 添加时间范围参数
+    const dataStartDate = document.getElementById('dataStartDate').value;
+    const dataEndDate = document.getElementById('dataEndDate').value;
+    
+    if (dataStartDate) parameters.data_start_date = dataStartDate;
+    if (dataEndDate) parameters.data_end_date = dataEndDate;
+    
+    return parameters;
+}
+
+// 运行预测
+async function runForecast() {
+    if (isLoading) {
+        showMessage('预测正在进行中，请稍候...', 'warning');
+        return;
+    }
+    
+    const model = document.getElementById('modelSelect').value;
+    const periods = document.getElementById('periodsInput').value;
+
+    // 参数验证
+    if (!model) {
+        showMessage('请选择预测模型', 'warning');
+        return;
+    }
+    
+    if (!periods || parseInt(periods) <= 0 || parseInt(periods) > 365) {
+        showMessage('请输入有效的预测周期 (1-365天)', 'warning');
+        return;
+    }
+    
+    try {
+        isLoading = true;
+        showLoading('正在运行预测分析...');
+        updateForecastButton(true);
+        
+        // 获取模型参数
+        const modelParams = getModelParameters();
+        
+        const requestData = {
+            model: model,
+            periods: parseInt(periods),
+            ...modelParams  // 展开模型参数
+        };
+        
+        console.log('发送预测请求:', requestData);
+        
+        const response = await fetch(`${API_BASE_URL}/forecast`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestData)
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `HTTP错误: ${response.status}`);
+        }
+        
+        let data = await response.json();
+        console.log('预测结果:', data);
+        //data 转为json格式
+        if (typeof data === 'string') {
+            data = JSON.parse(data);
+        }
+        // 更新图表
+        updateChart(data);
+        
+        // 更新评估指标
+        updateMetrics(data.metrics);
+        
+        // 更新模型信息
+//        updateModelInfo(data.model_info);
+        
+        showMessage('预测完成！', 'success');
+        
+    } catch (error) {
+        console.error('预测失败:', error);
+        showMessage('预测失败: ' + error.message, 'error');
+    } finally {
+        isLoading = false;
+        hideLoading();
+        updateForecastButton(false);
+    }
 }
 
 // 加载可用模型
@@ -159,79 +335,6 @@ function displayDataPreview(previewData) {
         `;
         tbody.appendChild(tr);
     });
-}
-
-// 运行预测
-async function runForecast() {
-    if (isLoading) {
-        showMessage('预测正在进行中，请稍候...', 'warning');
-        return;
-    }
-    
-    const model = document.getElementById('modelSelect').value;
-    const periods = document.getElementById('periodsInput').value;
-
-    // 参数验证
-    if (!model) {
-        showMessage('请选择预测模型', 'warning');
-        return;
-    }
-    
-    if (!periods || parseInt(periods) <= 0 || parseInt(periods) > 365) {
-        showMessage('请输入有效的预测周期 (1-365天)', 'warning');
-        return;
-    }
-    
-    try {
-        isLoading = true;
-        showLoading('正在运行预测分析...');
-        updateForecastButton(true);
-        
-        const requestData = {
-            model: model,
-            periods: parseInt(periods)
-        };
-        
-        console.log('发送预测请求:', requestData);
-        
-        const response = await fetch(`${API_BASE_URL}/forecast`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(requestData)
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || `HTTP错误: ${response.status}`);
-        }
-        
-        let data = await response.json();
-        console.log('预测结果:', data);
-        //data 转为json格式
-        if (typeof data === 'string') {
-            data = JSON.parse(data);
-        }
-        // 更新图表
-        updateChart(data);
-        
-        // 更新评估指标
-        updateMetrics(data.metrics);
-        
-        // 更新模型信息
-//        updateModelInfo(data.model_info);
-        
-        showMessage('预测完成！', 'success');
-        
-    } catch (error) {
-        console.error('预测失败:', error);
-        showMessage('预测失败: ' + error.message, 'error');
-    } finally {
-        isLoading = false;
-        hideLoading();
-        updateForecastButton(false);
-    }
 }
 
 // 上传文件
@@ -591,3 +694,31 @@ window.addEventListener('resize', function() {
         window.forecastChart.resize();
     }
 });
+
+// 初始化时间范围控件
+function initializeDateRangeControls() {
+    // 从数据信息中获取默认时间范围
+    const timeRangeElement = document.getElementById('timeRange');
+    if (timeRangeElement && timeRangeElement.textContent !== '-') {
+        const timeRangeText = timeRangeElement.textContent;
+        const [startDateStr, endDateStr] = timeRangeText.split(' 至 ');
+        
+        if (startDateStr && endDateStr) {
+            // 解析日期字符串
+            const startDate = new Date(startDateStr);
+            const endDate = new Date(endDateStr);
+            
+            // 设置日期控件的值
+            document.getElementById('dataStartDate').valueAsDate = startDate;
+            document.getElementById('dataEndDate').valueAsDate = endDate;
+        }
+    } else {
+        // 如果没有数据信息，则设置默认值（最近一年）
+        const today = new Date();
+        const oneYearAgo = new Date();
+        oneYearAgo.setFullYear(today.getFullYear() - 1);
+        
+        document.getElementById('dataStartDate').valueAsDate = oneYearAgo;
+        document.getElementById('dataEndDate').valueAsDate = today;
+    }
+}

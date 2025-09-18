@@ -124,6 +124,31 @@ body {
     width: 16px;
 }
 
+/* 数据时间范围控件样式 */
+.date-range-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-top: 10px;
+}
+
+.date-range-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.date-range-group label {
+    font-size: 0.85em;
+    margin-bottom: 5px;
+    color: #666;
+}
+
+.date-range-group input {
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
 /* 表单控件样式 */
 .form-control {
     padding: 0.75rem 1rem;

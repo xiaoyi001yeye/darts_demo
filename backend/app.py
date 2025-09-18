@@ -90,18 +90,25 @@ def load_metric_data():
     
     return hourly_data, best_device
 
-def prepare_arima_data(series, train_ratio=0.8):
-    """准备ARIMA模型的训练和验证数据"""
+def prepare_arima_data(series, train_ratio=0.8, 
+                      data_start_date=None, data_end_date=None):
+    """准备ARIMA模型的训练和验证数据，支持时间范围过滤"""
     # 转换为Darts TimeSeries
-    ts = TimeSeries.from_series(series, freq='5T',  # 5分钟频率
-        fill_missing_dates = True,fillna_value=1e-9)
+    ts = TimeSeries.from_series(series, freq='H')  # 小时频率
+    
+    # 根据指定的时间范围过滤数据
+    if data_start_date or data_end_date:
+        if data_start_date:
+            ts = ts.drop_before(pd.Timestamp(data_start_date))
+        if data_end_date:
+            ts = ts.drop_after(pd.Timestamp(data_end_date))
     
     # 划分训练集和验证集
     train_size = int(len(ts) * train_ratio)
-    train_series = ts[:train_size]
-    val_series = ts[train_size:]
+    ts_train = ts[:train_size]
+    ts_val = ts[train_size:]
     
-    return train_series, val_series
+    return ts_train, ts_val
 
 @app.route('/api/train', methods=['POST'])
 def train_model():
@@ -239,25 +246,43 @@ def forecast():
         d = int(data.get('d', 1)) 
         q = int(data.get('q', 2))
         train_ratio = float(data.get('train_ratio', 0.8))
+        trend = data.get('trend', 'c')
+        seasonal_order_P = int(data.get('seasonal_order_P', 0))
+        seasonal_order_D = int(data.get('seasonal_order_D', 0))
+        seasonal_order_Q = int(data.get('seasonal_order_Q', 0))
+        seasonal_periods = int(data.get('seasonal_periods', 24))
         
+        # 获取时间范围参数
+        data_start_date = data.get('data_start_date')
+        data_end_date = data.get('data_end_date')
+
+        # 构建季节性参数
+        seasonal_order = (seasonal_order_P, seasonal_order_D, seasonal_order_Q, seasonal_periods)
+
         # 加载数据
         series_data, device_id = load_metric_data()
-        
+
         # 准备训练数据
-        train_series, val_series = prepare_arima_data(series_data, train_ratio,)
-        
+        train_series, val_series = prepare_arima_data(
+            series_data, 
+            train_ratio=train_ratio,
+            data_start_date=data_start_date,
+            data_end_date=data_end_date
+        )
+
         # 创建并训练ARIMA模型
-        model = ARIMA(p=p, d=d, q=q)
+        # 注意：Darts的ARIMA实现与statsmodels略有不同，需要调整参数
+        model = ARIMA(p=p, d=d, q=q, trend=trend)
         model.fit(train_series)
-        
+
         # 预测
         forecast = model.predict(forecast_periods)
-        
+
         # 在验证集上评估（如果有足够的验证数据）
         if len(val_series) >= forecast_periods:
             val_forecast = model.predict(len(val_series))
             actual = val_series
-            
+
             mape_score = float(mape(actual, val_forecast))
             rmse_score = float(rmse(actual, val_forecast))
             mae_score = float(mae(actual, val_forecast))
@@ -265,7 +290,7 @@ def forecast():
         else:
             val_forecast = None
             mape_score = rmse_score = mae_score = mse_score = None
-        
+
         # 准备响应数据
         response = {
             'historical': {
@@ -289,7 +314,7 @@ def forecast():
             },
             'model_info': {
                 'type': 'ARIMA',
-                'parameters': f'ARIMA({p},{d},{q})',
+                'parameters': f'ARIMA({p},{d},{q}) with trend={trend}',
                 'device_id': device_id,
                 'train_size': len(train_series),
                 'val_size': len(val_series),
@@ -319,6 +344,33 @@ def get_models():
         }
     ]
     return jsonify(models)
+
+# 添加获取模型参数配置的接口
+@app.route('/api/model/<model_id>/parameters', methods=['GET'])
+def get_model_parameters(model_id):
+    """获取指定模型的参数配置"""
+    # 定义各模型的参数配置
+    model_parameters = {
+        'arima': {
+            'p': {'type': 'number', 'default': 2, 'min': 0, 'max': 5, 'description': '自回归阶数'},
+            'd': {'type': 'number', 'default': 1, 'min': 0, 'max': 2, 'description': '差分阶数'},
+            'q': {'type': 'number', 'default': 2, 'min': 0, 'max': 5, 'description': '移动平均阶数'},
+            'train_ratio': {'type': 'number', 'default': 0.8, 'min': 0.5, 'max': 0.95, 'step': 0.05, 'description': '训练集比例'},
+            'trend': {'type': 'select', 'options': ['n', 'c', 't', 'ct'], 'default': 'c', 'description': '趋势参数'},
+            'seasonal_order_P': {'type': 'number', 'default': 0, 'min': 0, 'max': 3, 'description': '季节性自回归阶数'},
+            'seasonal_order_D': {'type': 'number', 'default': 0, 'min': 0, 'max': 2, 'description': '季节性差分阶数'},
+            'seasonal_order_Q': {'type': 'number', 'default': 0, 'min': 0, 'max': 3, 'description': '季节性移动平均阶数'},
+            'seasonal_periods': {'type': 'number', 'default': 24, 'min': 1, 'max': 168, 'description': '季节性周期(小时)'}
+        }
+    }
+    
+    if model_id in model_parameters:
+        return jsonify({
+            'model_id': model_id,
+            'parameters': model_parameters[model_id]
+        })
+    else:
+        return jsonify({'error': '模型未找到'}), 404
 
 @app.route('/api/data/info', methods=['GET'])
 def get_data_info():

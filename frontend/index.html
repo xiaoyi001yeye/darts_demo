@@ -20,64 +20,7 @@
         
         <!-- 主要内容区域 -->
         <main class="main-content">
-            <!-- 控制面板 -->
-            <section class="control-panel">
-                <div class="panel-header">
-                    <h2><i class="fas fa-cogs"></i> 预测配置</h2>
-                </div>
-                
-                <div class="controls-grid">
-                    <!-- 模型选择 -->
-                    <div class="control-group">
-                        <label for="modelSelect">
-                            <i class="fas fa-brain"></i> 选择预测模型
-                        </label>
-                        <select id="modelSelect" class="form-control">
-                            <option value="">加载模型中...</option>
-                        </select>
-                        <small class="help-text">选择适合的预测算法</small>
-                    </div>
-                    
-                    <!-- 预测周期 -->
-                    <div class="control-group">
-                        <label for="periodsInput">
-                            <i class="fas fa-calendar-alt"></i> 预测周期
-                        </label>
-                        <input type="number" id="periodsInput" class="form-control" 
-                               placeholder="预测小时数" value="24" min="1" max="168">
-                        <small class="help-text">未来需要预测的小时数 (1-168)</small>
-                    </div>
-                    
-                    
-                    <!-- 操作按钮 -->
-                    <div class="control-group">
-                        <div class="button-group">
-                            <button id="trainBtn" class="btn btn-primary" onclick="trainModel()">
-                                <i class="fas fa-graduation-cap"></i> 训练模型
-                            </button>
-                            <button id="predictBtn" class="btn btn-secondary" onclick="runPrediction()" disabled>
-                                <i class="fas fa-crystal-ball"></i> 运行预测
-                            </button>
-                            <button id="forecastBtn" class="btn btn-success" onclick="runForecast()">
-                                <i class="fas fa-play"></i> 一键预测
-                            </button>
-                        </div>
-                        <small class="help-text">可以选择分步训练和预测，或一键完成</small>
-                    </div>
-                </div>
-            </section>
-            
-            <!-- 数据上传状态 -->
-            <section id="uploadStatus" class="upload-status" style="display: none;">
-                <div class="status-content">
-                    <i class="fas fa-check-circle status-icon"></i>
-                    <div class="status-text">
-                        <h3>数据上传成功</h3>
-                        <p id="uploadInfo"></p>
-                    </div>
-                </div>
-            </section>
-            
+
             <!-- 数据信息展示区域 -->
             <section class="data-info-section">
                 <div class="panel-header">
@@ -115,22 +58,101 @@
                         <div id="dataPreviewTable" class="preview-table-container">
                             <table class="data-table">
                                 <thead>
-                                    <tr>
-                                        <th>时间</th>
-                                        <th>设备ID</th>
-                                        <th>存储使用率</th>
-                                    </tr>
+                                <tr>
+                                    <th>时间</th>
+                                    <th>设备ID</th>
+                                    <th>存储使用率</th>
+                                </tr>
                                 </thead>
                                 <tbody id="previewTableBody">
-                                    <tr>
-                                        <td colspan="3" class="no-data">暂无数据</td>
-                                    </tr>
+                                <tr>
+                                    <td colspan="3" class="no-data">暂无数据</td>
+                                </tr>
                                 </tbody>
                             </table>
                         </div>
                     </div>
                 </div>
             </section>
+            <!-- 控制面板 -->
+            <section class="control-panel">
+                <div class="panel-header">
+                    <h2><i class="fas fa-cogs"></i> 预测配置</h2>
+                </div>
+                
+                <div class="controls-grid">
+                    <!-- 模型选择 -->
+                    <div class="control-group">
+                        <label for="modelSelect">
+                            <i class="fas fa-brain"></i> 选择预测模型
+                        </label>
+                        <select id="modelSelect" class="form-control">
+                            <option value="">加载模型中...</option>
+                        </select>
+                        <small class="help-text">选择适合的预测算法</small>
+                    </div>
+                    
+                    <!-- 预测周期 -->
+                    <div class="control-group">
+                        <label for="periodsInput">
+                            <i class="fas fa-calendar-alt"></i> 预测周期
+                        </label>
+                        <input type="number" id="periodsInput" class="form-control" 
+                               placeholder="预测小时数" value="24" min="1" max="168">
+                        <small class="help-text">未来需要预测的小时数 (1-168)</small>
+                        
+                        <!-- 数据时间范围选择 -->
+                        <div id="dateRangeContainer" class="control-group" style="margin-top: 15px;">
+                            <label><i class="fas fa-calendar"></i> 数据时间范围</label>
+                            <div class="date-range-controls">
+                                <div class="date-range-group">
+                                    <label for="dataStartDate">开始时间</label>
+                                    <input type="date" id="dataStartDate" class="form-control">
+                                </div>
+                                <div class="date-range-group">
+                                    <label for="dataEndDate">结束时间</label>
+                                    <input type="date" id="dataEndDate" class="form-control">
+                                </div>
+                            </div>
+                            <small class="help-text">选择用于训练和验证的数据时间范围（可选）</small>
+                        </div>
+                    </div>
+                    
+                    <!-- 模型参数配置 -->
+                    <div id="modelParametersContainer" class="control-group" style="display: none;">
+                        <!-- 动态生成的参数配置将插入这里 -->
+                    </div>
+                    
+                    <!-- 操作按钮 -->
+                    <div class="control-group">
+                        <div class="button-group">
+<!--                            <button id="trainBtn" class="btn btn-primary" onclick="trainModel()">-->
+<!--                                <i class="fas fa-graduation-cap"></i> 训练模型-->
+<!--                            </button>-->
+<!--                            <button id="predictBtn" class="btn btn-secondary" onclick="runPrediction()" disabled>-->
+<!--                                <i class="fas fa-crystal-ball"></i> 运行预测-->
+<!--                            </button>-->
+                            <button id="forecastBtn" class="btn btn-success" onclick="runForecast()">
+                                <i class="fas fa-play"></i> 一键预测
+                            </button>
+                        </div>
+                        <small class="help-text">可以选择分步训练和预测，或一键完成</small>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- 数据上传状态 -->
+            <section id="uploadStatus" class="upload-status" style="display: none;">
+                <div class="status-content">
+                    <i class="fas fa-check-circle status-icon"></i>
+                    <div class="status-text">
+                        <h3>数据上传成功</h3>
+                        <p id="uploadInfo"></p>
+                    </div>
+                </div>
+            </section>
+            
+
 
             <!-- 图表容器 -->
             <section class="chart-section">
