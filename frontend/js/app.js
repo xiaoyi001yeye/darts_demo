@@ -170,8 +170,7 @@ async function runForecast() {
     
     const model = document.getElementById('modelSelect').value;
     const periods = document.getElementById('periodsInput').value;
-    const multivariate = document.getElementById('multivariateCheck').checked;
-    
+
     // 参数验证
     if (!model) {
         showMessage('请选择预测模型', 'warning');
@@ -190,8 +189,7 @@ async function runForecast() {
         
         const requestData = {
             model: model,
-            periods: parseInt(periods),
-            multivariate: multivariate
+            periods: parseInt(periods)
         };
         
         console.log('发送预测请求:', requestData);
@@ -209,9 +207,12 @@ async function runForecast() {
             throw new Error(errorData.error || `HTTP错误: ${response.status}`);
         }
         
-        const data = await response.json();
+        let data = await response.json();
         console.log('预测结果:', data);
-        
+        //data 转为json格式
+        if (typeof data === 'string') {
+            data = JSON.parse(data);
+        }
         // 更新图表
         updateChart(data);
         
@@ -219,7 +220,7 @@ async function runForecast() {
         updateMetrics(data.metrics);
         
         // 更新模型信息
-        updateModelInfo(data.model_info);
+//        updateModelInfo(data.model_info);
         
         showMessage('预测完成！', 'success');
         

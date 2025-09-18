@@ -28,18 +28,7 @@ function initializeChart() {
                     backgroundColor: '#6a7985'
                 }
             },
-            formatter: function (params) {
-                let result = params[0].axisValue + '<br/>';
-                params.forEach(param => {
-                    const color = param.color;
-                    const seriesName = param.seriesName;
-                    const value = typeof param.value === 'number' ? 
-                        param.value.toFixed(2) : param.value[1].toFixed(2);
-                    result += `<span style="display:inline-block;margin-right:5px;border-radius:10px;width:10px;height:10px;background-color:${color};"></span>`;
-                    result += `${seriesName}: ${value}<br/>`;
-                });
-                return result;
-            }
+            formatter: tooltipFormatter
         },
         legend: {
             data: ['训练数据', '验证数据', '验证预测', '预测数据'],
@@ -224,113 +213,153 @@ function initializeChart() {
 }
 
 // 更新图表数据
-function updateChart(data) {
-    if (!forecastChart) {
-        console.error('图表尚未初始化');
-        return;
-    }
-    
+function updateChart(forecastData) {
     try {
-        // 准备训练数据（历史数据）
-        const historicalData = data.historical.dates.map((date, index) => [
-            new Date(date).getTime(), 
-            data.historical.values[index]
-        ]);
-        
-        // 准备验证数据
-        const validationData = data.validation && data.validation.dates ? 
-            data.validation.dates.map((date, index) => [
-                new Date(date).getTime(), 
-                data.validation.values[index]
-            ]) : [];
-        
-        // 准备验证预测数据
-        const validationForecast = data.validation && data.validation.forecast ? 
-            data.validation.dates.map((date, index) => [
-                new Date(date).getTime(), 
-                data.validation.forecast[index]
-            ]) : [];
-        
-        // 准备预测数据
-        const forecastData = data.forecast.dates.map((date, index) => [
-            new Date(date).getTime(), 
-            data.forecast.values[index]
-        ]);
-        
-        // 计算Y轴范围
-        const allValues = [
-            ...data.historical.values,
-            ...(data.validation ? data.validation.values : []),
-            ...(data.validation && data.validation.forecast ? data.validation.forecast : []),
-            ...data.forecast.values
-        ];
-        const minValue = Math.min(...allValues);
-        const maxValue = Math.max(...allValues);
-        const padding = (maxValue - minValue) * 0.1;
-        
-        // 更新图表配置
-        const option = {
-            title: {
-                text: 'ARIMA存储空间使用率预测',
-                subtext: `训练: ${data.historical.dates.length}, 验证: ${validationData.length}, 预测: ${data.forecast.dates.length} 个数据点`
-            },
-            yAxis: {
-                min: Math.max(0, minValue - padding),
-                max: maxValue + padding,
-                name: '使用率 (%)'
-            },
-            series: [
-                {
-                    name: '训练数据',
-                    data: historicalData
-                },
-                {
-                    name: '验证数据',
-                    data: validationData
-                },
-                {
-                    name: '验证预测',
-                    data: validationForecast
-                },
-                {
-                    name: '预测数据',
-                    data: forecastData
-                }
-            ]
-        };
-        
-        // 如果没有验证数据，隐藏验证数据系列
-        if (validationData.length === 0) {
-            option.legend = {
-                data: ['训练数据', '预测数据'],
-                top: 40
-            };
+        // 添加数据验证
+        if (!forecastData || !window.forecastChart) {
+            console.error('图表数据或实例不存在');
+            return;
         }
-        
-        forecastChart.setOption(option, true);
-        
-        // 添加预测区域标记
-        if (forecastData.length > 0) {
-            const firstForecastTime = forecastData[0][0];
-            forecastChart.setOption({
-                graphic: [{
-                    type: 'line',
-                    shape: {
-                        x1: 0, y1: 0, x2: 0, y2: 1
-                    },
-                    style: {
-                        stroke: '#ff6b6b',
-                        lineWidth: 2,
-                        lineDash: [5, 5]
-                    },
-                    left: 'center',
-                    top: 'middle'
-                }]
+
+        // 验证并清理数据
+        const historicalData = forecastData.historical || { dates: [], values: [] };
+        const forecastDataObj = forecastData.forecast || { dates: [], values: [] };
+        const validationData = forecastData.validation || { dates: [], values: [] };
+
+        // 日期验证函数
+        function isValidDate(dateString) {
+            return dateString && !isNaN(new Date(dateString).getTime());
+        }
+
+        // 确保日期是有效的
+        const cleanHistoricalDates = (historicalData.dates || []).filter(date => isValidDate(date));
+        const cleanHistoricalValues = (historicalData.values || []).slice(0, cleanHistoricalDates.length);
+
+        const cleanForecastDates = (forecastDataObj.dates || []).filter(date => isValidDate(date));
+        const cleanForecastValues = (forecastDataObj.values || []).slice(0, cleanForecastDates.length);
+
+        const cleanValidationDates = (validationData.dates || []).filter(date => isValidDate(date));
+        const cleanValidationValues = (validationData.values || []).slice(0, cleanValidationDates.length);
+
+        // 构建图表数据序列
+        const seriesData = [
+            {
+                name: '历史数据',
+                type: 'line',
+                data: cleanHistoricalDates.map((date, index) => [
+                    new Date(date).getTime(),
+                    cleanHistoricalValues[index] !== undefined ? cleanHistoricalValues[index] : null
+                ]),
+                showSymbol: false,
+                smooth: true,
+                lineStyle: {
+                    width: 2
+                }
+            }
+        ];
+
+        // 只有当预测数据存在时才添加
+        if (cleanForecastDates.length > 0 && cleanForecastValues.length > 0) {
+            seriesData.push({
+                name: '预测数据',
+                type: 'line',
+                data: cleanForecastDates.map((date, index) => [
+                    new Date(date).getTime(),
+                    cleanForecastValues[index] !== undefined ? cleanForecastValues[index] : null
+                ]),
+                showSymbol: false,
+                smooth: true,
+                lineStyle: {
+                    width: 2,
+                    type: 'dashed'
+                },
+                itemStyle: {
+                    color: '#FF6B35'
+                }
             });
         }
-        
-        console.log('图表更新完成');
-        
+
+        // 只有当验证数据存在时才添加
+        if (cleanValidationDates.length > 0 && cleanValidationValues.length > 0) {
+            seriesData.push({
+                name: '验证数据',
+                type: 'line',
+                data: cleanValidationDates.map((date, index) => [
+                    new Date(date).getTime(),
+                    cleanValidationValues[index] !== undefined ? cleanValidationValues[index] : null
+                ]),
+                showSymbol: false,
+                smooth: true,
+                lineStyle: {
+                    width: 2,
+                    type: 'dotted'
+                },
+                itemStyle: {
+                    color: '#2E7D32'
+                }
+            });
+        }
+
+        // 设置图表选项
+        const option = {
+            title: {
+                text: '时间序列预测结果',
+                left: 'center',
+                textStyle: {
+                    fontSize: 16,
+                    fontWeight: 'normal'
+                }
+            },
+            tooltip: {
+                trigger: 'axis',
+                formatter: tooltipFormatter
+            },
+            legend: {
+                data: ['历史数据', '预测数据', '验证数据'].filter(name =>
+                    (name === '历史数据') ||
+                    (name === '预测数据' && cleanForecastDates.length > 0) ||
+                    (name === '验证数据' && cleanValidationDates.length > 0)
+                ),
+                top: 30
+            },
+            grid: {
+                left: '60',
+                right: '40',
+                bottom: '60',
+                top: '80',
+                containLabel: true
+            },
+            xAxis: {
+                type: 'time',
+                name: '时间',
+                nameLocation: 'middle',
+                nameGap: 30
+            },
+            yAxis: {
+                type: 'value',
+                name: '数值',
+                nameLocation: 'middle',
+                nameGap: 40
+            },
+            dataZoom: [
+                {
+                    type: 'inside',
+                    start: 0,
+                    end: 100
+                },
+                {
+                    type: 'slider',
+                    start: 0,
+                    end: 100,
+                    bottom: 10
+                }
+            ],
+            series: seriesData
+        };
+
+        // 使用配置项更新图表
+        window.forecastChart.setOption(option, true);
+
     } catch (error) {
         console.error('更新图表失败:', error);
         showMessage('图表更新失败: ' + error.message, 'error');
@@ -563,4 +592,32 @@ function scrollToForecast() {
             });
         }
     }
+}
+
+
+// Tooltip格式化函数
+function tooltipFormatter(params) {
+    // 获取时间戳并转换为日期对象
+        const dateObj = new Date(params[0].value[0]);
+
+        // 第一行：日期 (YYYY-MM-DD格式)
+        const dateStr = dateObj.toLocaleDateString('zh-CN');
+
+        // 第二行：采集时间 (HH:mm:ss格式)
+        const timeStr = dateObj.toLocaleTimeString('zh-CN', {
+            hour12: false,
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+
+        // 第三行及后续：各系列的采集值
+        let valueStr = '';
+        params.forEach(param => {
+            const value = param.value[1] !== null ? parseFloat(param.value[1]).toFixed(2) : 'N/A';
+            valueStr += `<br/>${param.seriesName}: ${value}`;
+        });
+
+        // 组合三行数据
+        return `${dateStr}<br/>${timeStr}${valueStr}`;
 }
