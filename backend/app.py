@@ -93,7 +93,8 @@ def load_metric_data():
 def prepare_arima_data(series, train_ratio=0.8):
     """准备ARIMA模型的训练和验证数据"""
     # 转换为Darts TimeSeries
-    ts = TimeSeries.from_series(series)
+    ts = TimeSeries.from_series(series, freq='5T',  # 5分钟频率
+        fill_missing_dates = True,fillna_value=1e-9)
     
     # 划分训练集和验证集
     train_size = int(len(ts) * train_ratio)
@@ -243,7 +244,7 @@ def forecast():
         series_data, device_id = load_metric_data()
         
         # 准备训练数据
-        train_series, val_series = prepare_arima_data(series_data, train_ratio)
+        train_series, val_series = prepare_arima_data(series_data, train_ratio,)
         
         # 创建并训练ARIMA模型
         model = ARIMA(p=p, d=d, q=q)
@@ -297,7 +298,7 @@ def forecast():
             }
         }
         
-        return jsonify(response)
+        return jsonify(json.dumps(response))
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
