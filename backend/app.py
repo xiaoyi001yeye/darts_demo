@@ -34,7 +34,7 @@ trained_model = None
 train_series = None
 val_series = None
 
-def load_metric_data():
+def load_metric_data(resource_id=None):
     """加载存储空间使用率数据"""
     # 查找data目录下的所有CSV文件
     # 支持多种路径：容器内部路径和本地开发路径
@@ -70,6 +70,10 @@ def load_metric_data():
     # 转换时间列
     df['datetime'] = pd.to_datetime(df['time'])
     
+    # 如果指定了资源ID，则过滤数据
+    if resource_id:
+        df = df[df['ci_id'] == resource_id]
+    
     # 过滤有效数据 (value > 0，去除连接失败的数据)
     valid_data = df[df['value'] > 0].copy()
     
@@ -93,9 +97,22 @@ def load_metric_data():
 def prepare_arima_data(series, train_ratio=0.8, 
                       data_start_date=None, data_end_date=None):
     """准备ARIMA模型的训练和验证数据，支持时间范围过滤"""
+     # 1. 首先处理无效值 (-2 表示连接失败)
+    series = series[series > 0]  # 过滤掉无效值
+
+    # 2. 重新索引到规则的5分钟频率时间序列，填充缺失值
+    series = series.asfreq('5T')  # '5T' 表示5分钟频率
+
+    # 3. 处理缺失值 - 可以选择插值或前向填充
+    series = series.interpolate(method='time')  # 时间序列插值
+    # 或者使用前向填充: series = series.fillna(method='ffill')
     # 转换为Darts TimeSeries
-    ts = TimeSeries.from_series(series, freq='H')  # 小时频率
-    
+    # ts = TimeSeries.from_series(series, freq='H')  # 小时频率
+    # 如果原始数据是分钟级
+    # ts = TimeSeries.from_series(series, freq='T')  # 分钟频率
+    # 如果原始数据是秒级
+    # ts = TimeSeries.from_series(series, freq='S')  # 秒频率
+    ts = TimeSeries.from_series(series, freq='5T')
     # 根据指定的时间范围过滤数据
     if data_start_date or data_end_date:
         if data_start_date:
@@ -255,12 +272,15 @@ def forecast():
         # 获取时间范围参数
         data_start_date = data.get('data_start_date')
         data_end_date = data.get('data_end_date')
+        
+        # 获取资源ID参数
+        resource_id = data.get('resource_id')
 
         # 构建季节性参数
         seasonal_order = (seasonal_order_P, seasonal_order_D, seasonal_order_Q, seasonal_periods)
 
-        # 加载数据
-        series_data, device_id = load_metric_data()
+        # 加载数据，支持根据资源ID过滤
+        series_data, device_id = load_metric_data(resource_id)
 
         # 准备训练数据
         train_series, val_series = prepare_arima_data(

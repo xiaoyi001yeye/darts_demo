@@ -137,6 +137,10 @@ function getModelParameters() {
     if (dataStartDate) parameters.data_start_date = dataStartDate;
     if (dataEndDate) parameters.data_end_date = dataEndDate;
     
+    // 添加资源参数
+    const resourceId = document.getElementById('resourceSelect').value;
+    if (resourceId) parameters.resource_id = resourceId;
+    
     return parameters;
 }
 
@@ -325,6 +329,9 @@ function displayDataPreview(previewData) {
     }
     
     tbody.innerHTML = '';
+    
+    // 更新资源选择列表
+    updateResourceSelector(previewData.records);
     
     previewData.records.forEach(item => {
         const tr = document.createElement('tr');
@@ -729,4 +736,26 @@ function initializeDateRangeControls() {
         document.getElementById('dataStartDate').value = formatDate(oneYearAgo);
         document.getElementById('dataEndDate').value = formatDate(today);
     }
+}
+
+// 更新资源选择器
+function updateResourceSelector(records) {
+    const resourceSelect = document.getElementById('resourceSelect');
+    if (!resourceSelect) return;
+    
+    // 清空现有选项
+    resourceSelect.innerHTML = '<option value="">选择资源...</option>';
+    
+    // 添加资源选项
+    records.forEach(record => {
+        if (record.ci_id) {
+            const option = document.createElement('option');
+            option.value = record.ci_id;
+            option.textContent = record.ci_id;
+            resourceSelect.appendChild(option);
+        }
+    });
+    
+    // 显示资源选择器
+    document.getElementById('resourceSelectorContainer').style.display = 'block';
 }
