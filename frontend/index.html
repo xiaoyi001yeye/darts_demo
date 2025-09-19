@@ -59,14 +59,18 @@
                             <table class="data-table">
                                 <thead>
                                 <tr>
-                                    <th>时间</th>
+                                    <th>开始时间</th>
+                                    <th>结束时间</th>
                                     <th>设备ID</th>
-                                    <th>存储使用率</th>
+                                    <th>设备类型</th>
+                                    <th>代码</th>
+                                    <th>正常数</th>
+                                    <th>异常数</th>
                                 </tr>
                                 </thead>
                                 <tbody id="previewTableBody">
                                 <tr>
-                                    <td colspan="3" class="no-data">暂无数据</td>
+                                    <td colspan="7" class="no-data">暂无数据</td>
                                 </tr>
                                 </tbody>
                             </table>
@@ -107,11 +111,11 @@
                             <div class="date-range-controls">
                                 <div class="date-range-group">
                                     <label for="dataStartDate">开始时间</label>
-                                    <input type="date" id="dataStartDate" class="form-control">
+                                    <input type="datetime-local" id="dataStartDate" class="form-control">
                                 </div>
                                 <div class="date-range-group">
                                     <label for="dataEndDate">结束时间</label>
-                                    <input type="date" id="dataEndDate" class="form-control">
+                                    <input type="datetime-local" id="dataEndDate" class="form-control">
                                 </div>
                             </div>
                             <small class="help-text">选择用于训练和验证的数据时间范围（可选）</small>

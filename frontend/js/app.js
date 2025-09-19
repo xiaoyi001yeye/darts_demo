@@ -270,7 +270,7 @@ async function loadDataInfo() {
         }
         
         // 获取数据预览
-        const previewResponse = await fetch(`${API_BASE_URL}/data/preview`);
+        const previewResponse = await fetch(`${API_BASE_URL}/data/preview2`);
         if (!previewResponse.ok) {
             throw new Error(`HTTP错误: ${previewResponse.status}`);
         }
@@ -315,23 +315,27 @@ function displayDataInfo(dataInfo) {
     }
 }
 
-// 显示数据预览
+// 显示数据预览 - 根据新逻辑重写
 function displayDataPreview(previewData) {
     const tbody = document.getElementById('previewTableBody');
     
-    if (!previewData.data || previewData.data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="3" class="no-data">暂无数据</td></tr>';
+    if (!previewData.records || previewData.records.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="no-data">暂无数据</td></tr>';
         return;
     }
     
     tbody.innerHTML = '';
     
-    previewData.data.forEach(item => {
+    previewData.records.forEach(item => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td>${item.time || '-'}</td>
+            <td>${item.data_start_time || '-'}</td>
+            <td>${item.data_end_time || '-'}</td>
             <td>${item.ci_id || '-'}</td>
-            <td>${item.value ? item.value.toFixed(2) : '-'}</td>
+            <td>${item.ci_type || '-'}</td>
+            <td>${item.code || '-'}</td>
+            <td>${item.normal_count !== undefined ? item.normal_count : '-'}</td>
+            <td>${item.abnormal_count !== undefined ? item.abnormal_count : '-'}</td>
         `;
         tbody.appendChild(tr);
     });
@@ -704,13 +708,9 @@ function initializeDateRangeControls() {
         const [startDateStr, endDateStr] = timeRangeText.split(' 至 ');
         
         if (startDateStr && endDateStr) {
-            // 解析日期字符串
-            const startDate = new Date(startDateStr);
-            const endDate = new Date(endDateStr);
-            
-            // 设置日期控件的值
-            document.getElementById('dataStartDate').valueAsDate = startDate;
-            document.getElementById('dataEndDate').valueAsDate = endDate;
+            // 设置日期控件的值，使用value而不是valueAsDate
+            document.getElementById('dataStartDate').value = startDateStr.split(' ')[0]; // 只取日期部分
+            document.getElementById('dataEndDate').value = endDateStr.split(' ')[0]; // 只取日期部分
         }
     } else {
         // 如果没有数据信息，则设置默认值（最近一年）
@@ -718,7 +718,15 @@ function initializeDateRangeControls() {
         const oneYearAgo = new Date();
         oneYearAgo.setFullYear(today.getFullYear() - 1);
         
-        document.getElementById('dataStartDate').valueAsDate = oneYearAgo;
-        document.getElementById('dataEndDate').valueAsDate = today;
+        // 格式化为 YYYY-MM-DD
+        const formatDate = (date) => {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
+        
+        document.getElementById('dataStartDate').value = formatDate(oneYearAgo);
+        document.getElementById('dataEndDate').value = formatDate(today);
     }
 }

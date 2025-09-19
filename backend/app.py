@@ -326,6 +326,7 @@ def forecast():
         return jsonify(json.dumps(response))
     
     except Exception as e:
+        print(str(e))
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/models', methods=['GET'])
@@ -410,37 +411,162 @@ def get_data_info():
 def preview_data():
     """预览数据"""
     try:
+        # 调用load_metric_data函数加载存储空间使用率数据，并获取时间序列数据和设备ID
         series_data, device_id = load_metric_data()
         
-        # 返回最近100个数据点
+        # 从时间序列数据中提取最近的100个数据点用于预览
         preview_data = series_data.tail(100)
         
-        # 转换为记录列表格式
+        # 初始化一个空列表，用于存储预览数据记录
         records = []
+        # 遍历预览数据中的每个数据点
         for i in range(len(preview_data)):
+            # 将每个数据点转换为字典格式并添加到记录列表中
             records.append({
+                # 将时间戳转换为字符串格式 'YYYY-MM-DD HH:MM:SS'
                 'time': preview_data.index[i].strftime('%Y-%m-%d %H:%M:%S'),
+                # 添加设备ID
                 'ci_id': device_id,
+                # 将数值转换为浮点数格式
                 'value': float(preview_data.iloc[i])
             })
         
+        # 构建响应数据结构
         response = {
+            # 添加设备ID
             'device_id': device_id,
+            # 添加数据记录列表
             'data': records,
+            # 添加总数据点数
             'total_points': len(series_data),
+            # 添加预览数据点数
             'preview_points': len(preview_data),
+            # 添加数据时间范围信息
             'date_range': {
+                # 添加数据起始时间
                 'start': series_data.index.min().strftime('%Y-%m-%d %H:%M:%S'),
+                # 添加数据结束时间
                 'end': series_data.index.max().strftime('%Y-%m-%d %H:%M:%S')
             }
         }
         
+        # 返回成功的JSON响应，包含状态和预览数据
         return jsonify({
             "status": "success",
             "data": response
         })
     
+    # 捕获可能出现的异常
     except Exception as e:
+        # 返回错误的JSON响应，包含状态和错误信息
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/data/preview2', methods=['GET'])
+def preview_data2():
+    """预览数据 - 按设备统计数据概况"""
+    try:
+        # 查找data目录下的所有CSV文件
+        data_dir = os.getenv('DATA_DIR', '/app/data')
+        if not os.path.exists(data_dir):
+            # 如果容器内路径不存在，尝试本地开发路径
+            local_data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
+            if os.path.exists(local_data_dir):
+                data_dir = local_data_dir
+            else:
+                raise FileNotFoundError(f"数据目录不存在: {data_dir} 和 {local_data_dir}")
+
+        csv_files = glob.glob(os.path.join(data_dir, '*.csv'))
+
+        if not csv_files:
+            raise FileNotFoundError(f"data目录中没有找到CSV文件: {data_dir}")
+
+        # 读取所有CSV文件
+        all_data = []
+        for file_path in csv_files:
+            try:
+                df = pd.read_csv(file_path)
+                all_data.append(df)
+            except Exception as e:
+                print(f"警告: 无法读取文件 {file_path}: {e}")
+
+        if not all_data:
+            raise FileNotFoundError("没有成功读取任何CSV文件")
+
+        # 合并所有数据
+        df = pd.concat(all_data, ignore_index=True)
+
+        # 转换时间列
+        df['datetime'] = pd.to_datetime(df['time'])
+
+        # 按设备分组进行统计
+        device_stats = []
+
+        # 对每个设备进行分组统计
+        for ci_id, group in df.groupby('ci_id'):
+            # 获取设备类型（取第一个非空值）
+            ci_type = group['ci_type'].iloc[0] if not group['ci_type'].empty else 'unknown'
+
+            # 获取数据代码（取第一个非空值）
+            code = group['code'].iloc[0] if not group['code'].empty else 'unknown'
+
+            # 计算时间范围
+            data_start_time = group['datetime'].min().strftime('%Y-%m-%d %H:%M:%S')
+            data_end_time = group['datetime'].max().strftime('%Y-%m-%d %H:%M:%S')
+
+            # 统计正常值和异常值
+            normal_count = len(group[group['value'] != -2])
+            abnormal_count = len(group[group['value'] == -2])
+
+            # 构建设备统计信息
+            device_stat = {
+                'ci_id': ci_id,
+                'ci_type': ci_type,
+                'data_start_time': data_start_time,
+                'data_end_time': data_end_time,
+                'code': code,
+                'normal_count': normal_count,
+                'abnormal_count': abnormal_count
+            }
+
+            device_stats.append(device_stat)
+
+        # 按正常数据量降序排序（数据质量好的设备排在前面）
+        device_stats.sort(key=lambda x: x['normal_count'], reverse=True)
+
+        # 计算总体统计信息
+        total_records = len(df)
+        total_devices = len(device_stats)
+        total_normal = sum(stat['normal_count'] for stat in device_stats)
+        total_abnormal = sum(stat['abnormal_count'] for stat in device_stats)
+
+        # 构建响应数据结构
+        response = {
+            'summary': {
+                'total_devices': total_devices,
+                'total_records': total_records,
+                'total_normal_count': total_normal,
+                'total_abnormal_count': total_abnormal,
+                'data_quality_ratio': round(total_normal / total_records * 100, 2) if total_records > 0 else 0
+            },
+            'records': device_stats,
+            'data_range': {
+                'start': df['datetime'].min().strftime('%Y-%m-%d %H:%M:%S'),
+                'end': df['datetime'].max().strftime('%Y-%m-%d %H:%M:%S')
+            }
+        }
+
+        # 返回成功的JSON响应，包含状态和预览数据
+        return jsonify({
+            "status": "success",
+            "data": response
+        })
+
+    # 捕获可能出现的异常
+    except Exception as e:
+        # 返回错误的JSON响应，包含状态和错误信息
         return jsonify({
             "status": "error",
             "message": str(e)
