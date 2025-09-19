@@ -220,6 +220,11 @@ function updateChart(forecastData) {
             console.error('图表数据或实例不存在');
             return;
         }
+        // 从forecastData中提取模型类型生成标题
+        let chartTitle = '时间序列预测结果';
+        if (forecastData.model_info && forecastData.model_info.type) {
+            chartTitle = `${forecastData.model_info.type}模型时间序列预测结果`;
+        }
 
         // 验证并清理数据
         const historicalData = forecastData.historical || { dates: [], values: [] };
@@ -303,7 +308,7 @@ function updateChart(forecastData) {
         // 设置图表选项
         const option = {
             title: {
-                text: '时间序列预测结果',
+                text: chartTitle,
                 left: 'center',
                 textStyle: {
                     fontSize: 16,

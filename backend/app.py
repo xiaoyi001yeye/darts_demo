@@ -131,7 +131,7 @@ def prepare_arima_data(series, train_ratio=0.8,
 def train_model():
     """训练ARIMA模型"""
     global trained_model, train_series, val_series
-    
+
     try:
         # 获取参数
         data = request.json if request.json else {}
@@ -139,22 +139,22 @@ def train_model():
         d = int(data.get('d', 1))  # ARIMA的d参数
         q = int(data.get('q', 2))  # ARIMA的q参数
         train_ratio = float(data.get('train_ratio', 0.8))
-        
+
         # 加载数据
         series_data, device_id = load_metric_data()
-        
+
         # 准备训练数据
         train_series, val_series = prepare_arima_data(series_data, train_ratio)
-        
+
         # 创建并训练ARIMA模型
         model = ARIMA(p=p, d=d, q=q)
         model.fit(train_series)
         trained_model = model
-        
+
         # 在验证集上评估
         if len(val_series) > 0:
             val_forecast = model.predict(len(val_series))
-            
+
             # 计算评估指标
             mape_score = float(mape(val_series, val_forecast))
             rmse_score = float(rmse(val_series, val_forecast))
@@ -163,14 +163,14 @@ def train_model():
         else:
             val_forecast = None
             mape_score = rmse_score = mae_score = mse_score = None
-        
+
         # 准备响应数据
         response = {
             'success': True,
             'message': '模型训练完成',
             'model_params': {
                 'p': p,
-                'd': d, 
+                'd': d,
                 'q': q,
                 'model_type': 'ARIMA'
             },
@@ -201,9 +201,9 @@ def train_model():
                 'mse': mse_score
             }
         }
-        
+
         return jsonify(response)
-    
+
     except Exception as e:
         return jsonify({'error': f'训练模型时出错: {str(e)}'}), 500
 
@@ -343,7 +343,7 @@ def forecast():
             }
         }
         
-        return jsonify(json.dumps(response))
+        return json.dumps(response)
     
     except Exception as e:
         print(str(e))
@@ -377,7 +377,7 @@ def get_model_parameters(model_id):
             'd': {'type': 'number', 'default': 1, 'min': 0, 'max': 2, 'description': '差分阶数'},
             'q': {'type': 'number', 'default': 2, 'min': 0, 'max': 5, 'description': '移动平均阶数'},
             'train_ratio': {'type': 'number', 'default': 0.8, 'min': 0.5, 'max': 0.95, 'step': 0.05, 'description': '训练集比例'},
-            'trend': {'type': 'select', 'options': ['n', 'c', 't', 'ct'], 'default': 'c', 'description': '趋势参数'},
+            'trend': {'type': 'select', 'options': ['n', 'c', 't', 'ct'], 'default': 'n', 'description': '趋势参数'},
             'seasonal_order_P': {'type': 'number', 'default': 0, 'min': 0, 'max': 3, 'description': '季节性自回归阶数'},
             'seasonal_order_D': {'type': 'number', 'default': 0, 'min': 0, 'max': 2, 'description': '季节性差分阶数'},
             'seasonal_order_Q': {'type': 'number', 'default': 0, 'min': 0, 'max': 3, 'description': '季节性移动平均阶数'},
