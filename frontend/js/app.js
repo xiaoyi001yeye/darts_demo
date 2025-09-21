@@ -66,9 +66,16 @@ function displayModelParameters(parameters) {
     const container = document.getElementById('modelParametersContainer');
     if (!container) return;
     
+    // 按index字段排序参数
+    const sortedParams = Object.entries(parameters).sort((a, b) => {
+        const indexA = a[1].index || 999;
+        const indexB = b[1].index || 999;
+        return indexA - indexB;
+    });
+    
     let html = '<div class="parameters-grid">';
     
-    for (const [key, param] of Object.entries(parameters)) {
+    for (const [key, param] of sortedParams) {
         // 使用"描述(参数code)"格式显示参数标签
         const displayName = param.description ? `${param.description}(${key})` : key;
         
@@ -515,6 +522,17 @@ function updateMetrics(metrics) {
                     </div>
                     <div class="metric-value">${metrics.mae.toFixed(2)}</div>
                     <div class="metric-description">平均绝对误差</div>
+                </div>
+            ` : ''}
+            
+            ${metrics.mse ? `
+                <div class="metric-card">
+                    <div class="metric-header">
+                        <i class="fas fa-square"></i>
+                        <h4>MSE</h4>
+                    </div>
+                    <div class="metric-value">${metrics.mse.toFixed(2)}</div>
+                    <div class="metric-description">均方误差</div>
                 </div>
             ` : ''}
             

@@ -12,17 +12,17 @@ class ARIMAModel(BaseModel):
     
     def get_parameter_config(self):
         return {
-            'p': ParameterConfig('number', default=2, min=0, max=5, description='自回归阶数'),
-            'd': ParameterConfig('number', default=1, min=0, max=2, description='差分阶数'),
-            'q': ParameterConfig('number', default=2, min=0, max=5, description='移动平均阶数'),
-            'train_ratio': ParameterConfig('number', default=0.8, min=0.5, max=0.95, step=0.05, description='训练集比例'),
-            'trend': ParameterConfig('select', default='n', options=['n', 'c', 't', 'ct'], description='趋势参数'),
-            'seasonal_order_P': ParameterConfig('number', default=0, min=0, max=3, description='季节性自回归阶数'),
-            'seasonal_order_D': ParameterConfig('number', default=0, min=0, max=2, description='季节性差分阶数'),
-            'seasonal_order_Q': ParameterConfig('number', default=0, min=0, max=3, description='季节性移动平均阶数'),
-            'seasonal_periods': ParameterConfig('number', default=24, min=1, max=168, description='季节性周期(小时)'),
-            'confidence_level': ParameterConfig('number', default=0.95, min=0.8, max=0.99, step=0.01, description='置信水平'),
-            'num_samples': ParameterConfig('number', default=1, min=1, max=1000, description='采样数量')
+            'p': ParameterConfig('number', default=2, min=0, max=5, description='自回归阶数', index=1),
+            'd': ParameterConfig('number', default=1, min=0, max=2, description='差分阶数', index=2),
+            'q': ParameterConfig('number', default=2, min=0, max=5, description='移动平均阶数', index=3),
+            'train_ratio': ParameterConfig('number', default=0.8, min=0.5, max=0.95, step=0.05, description='训练集比例', index=4),
+            'trend': ParameterConfig('select', default='n', options=['n', 'c', 't', 'ct', 'None'], description='趋势参数', index=5),
+            'seasonal_order_P': ParameterConfig('number', default=0, min=0, max=3, description='季节性自回归阶数', index=6),
+            'seasonal_order_D': ParameterConfig('number', default=0, min=0, max=2, description='季节性差分阶数', index=7),
+            'seasonal_order_Q': ParameterConfig('number', default=0, min=0, max=3, description='季节性移动平均阶数', index=8),
+            'seasonal_periods': ParameterConfig('number', default=24, min=1, max=168, description='季节性周期(小时)', index=9),
+            'confidence_level': ParameterConfig('number', default=0.95, min=0.8, max=0.99, step=0.01, description='置信水平', index=10),
+            'num_samples': ParameterConfig('number', default=1, min=1, max=1000, description='采样数量', index=11)
         }
     
     def create_model(self, **params):
@@ -30,6 +30,9 @@ class ARIMAModel(BaseModel):
         d = int(params.get('d', 1))
         q = int(params.get('q', 2))
         trend = params.get('trend', 'n')
+        # 如果用户选择None，则在模型中使用None值
+        if trend == 'None':
+            trend = None
         seasonal_order_P = int(params.get('seasonal_order_P', 0))
         seasonal_order_D = int(params.get('seasonal_order_D', 0))
         seasonal_order_Q = int(params.get('seasonal_order_Q', 0))
