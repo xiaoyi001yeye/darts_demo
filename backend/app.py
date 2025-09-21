@@ -364,6 +364,15 @@ def preview_data2():
             # 统计正常值和异常值
             normal_count = len(group[group['value'] != -2])
             abnormal_count = len(group[group['value'] == -2])
+            
+            # 计算平均值和标准差（仅基于有效数据）
+            valid_data = group[group['value'] > 0]['value']
+            if len(valid_data) > 0:
+                mean_value = float(valid_data.mean())
+                std_value = float(valid_data.std()) if len(valid_data) > 1 else 0.0
+            else:
+                mean_value = -1
+                std_value = -1
 
             # 构建设备统计信息
             device_stat = {
@@ -373,7 +382,9 @@ def preview_data2():
                 'data_end_time': data_end_time,
                 'code': code,
                 'normal_count': normal_count,
-                'abnormal_count': abnormal_count
+                'abnormal_count': abnormal_count,
+                'mean': mean_value,
+                'std': std_value
             }
 
             device_stats.append(device_stat)

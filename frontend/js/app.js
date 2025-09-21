@@ -332,7 +332,7 @@ function displayDataPreview(previewData) {
     const tbody = document.getElementById('previewTableBody');
     
     if (!previewData.records || previewData.records.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="no-data">暂无数据</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="no-data">暂无数据</td></tr>';
         return;
     }
     
@@ -342,6 +342,10 @@ function displayDataPreview(previewData) {
     updateResourceSelector(previewData.records);
     
     previewData.records.forEach(item => {
+        // 处理平均值和标准差的显示
+        const meanValue = item.mean !== undefined && item.mean !== -1 ? item.mean.toFixed(2) : '-';
+        const stdValue = item.std !== undefined && item.std !== -1 ? item.std.toFixed(2) : '-';
+        
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td>${item.data_start_time || '-'}</td>
@@ -351,6 +355,8 @@ function displayDataPreview(previewData) {
             <td>${item.code || '-'}</td>
             <td>${item.normal_count !== undefined ? item.normal_count : '-'}</td>
             <td>${item.abnormal_count !== undefined ? item.abnormal_count : '-'}</td>
+            <td>${meanValue}</td>
+            <td>${stdValue}</td>
         `;
         tbody.appendChild(tr);
     });
