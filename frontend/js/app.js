@@ -170,10 +170,10 @@ async function runForecast() {
         return;
     }
     
-    if (!periods || parseInt(periods) <= 0 || parseInt(periods) > 365) {
-        showMessage('请输入有效的预测周期 (1-365天)', 'warning');
-        return;
-    }
+//    if (!periods || parseInt(periods) <= 0 || parseInt(periods) > 365) {
+//        showMessage('请输入有效的预测周期 (1-365天)', 'warning');
+//        return;
+//    }
     
     try {
         isLoading = true;
