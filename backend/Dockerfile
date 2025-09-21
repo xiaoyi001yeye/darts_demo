@@ -1,5 +1,15 @@
-# 使用官方 Python 镜像
-FROM python:3.9-slim
+FROM python:3.10-slim AS builder
+RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ && \
+    pip config set global.trusted-host mirrors.aliyun.com && \
+    pip config set global.timeout 120 && \
+    pip config set install.retries 5
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir u8darts[all] --default-timeout=120 --retries 5 && \
+    pip install --no-cache-dir -r requirements.txt --default-timeout=120 --retries 5 
+
+FROM python:3.10-slim
 
 # 设置工作目录
 WORKDIR /app
@@ -13,9 +23,7 @@ RUN apt-get update && apt-get install -y \
     libhdf5-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# 复制 requirements.txt 并安装 Python 依赖
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
 
 # 复制应用代码
 COPY . .
