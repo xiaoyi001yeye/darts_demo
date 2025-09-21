@@ -3,6 +3,8 @@ from flask_cors import CORS
 import pandas as pd
 from darts import TimeSeries
 from darts.models import ARIMA
+# 添加Prophet模型导入
+from darts.models import Prophet
 from darts.metrics import mape, rmse, mae, mse
 from darts.utils.statistics import check_seasonality, plot_acf, plot_pacf
 import json
@@ -127,130 +129,7 @@ def prepare_arima_data(series, train_ratio=0.8,
     
     return ts_train, ts_val
 
-@app.route('/api/train', methods=['POST'])
-def train_model():
-    """训练ARIMA模型"""
-    global trained_model, train_series, val_series
 
-    try:
-        # 获取参数
-        data = request.json if request.json else {}
-        p = int(data.get('p', 2))  # ARIMA的p参数
-        d = int(data.get('d', 1))  # ARIMA的d参数
-        q = int(data.get('q', 2))  # ARIMA的q参数
-        train_ratio = float(data.get('train_ratio', 0.8))
-
-        # 加载数据
-        series_data, device_id = load_metric_data()
-
-        # 准备训练数据
-        train_series, val_series = prepare_arima_data(series_data, train_ratio)
-
-        # 创建并训练ARIMA模型
-        model = ARIMA(p=p, d=d, q=q)
-        model.fit(train_series)
-        trained_model = model
-
-        # 在验证集上评估
-        if len(val_series) > 0:
-            val_forecast = model.predict(len(val_series))
-
-            # 计算评估指标
-            mape_score = float(mape(val_series, val_forecast))
-            rmse_score = float(rmse(val_series, val_forecast))
-            mae_score = float(mae(val_series, val_forecast))
-            mse_score = float(mse(val_series, val_forecast))
-        else:
-            val_forecast = None
-            mape_score = rmse_score = mae_score = mse_score = None
-
-        # 准备响应数据
-        response = {
-            'success': True,
-            'message': '模型训练完成',
-            'model_params': {
-                'p': p,
-                'd': d,
-                'q': q,
-                'model_type': 'ARIMA'
-            },
-            'data_info': {
-                'device_id': device_id,
-                'total_points': len(series_data),
-                'train_points': len(train_series),
-                'val_points': len(val_series),
-                'data_frequency': 'hourly',
-                'date_range': {
-                    'start': series_data.index.min().strftime('%Y-%m-%d %H:%M:%S'),
-                    'end': series_data.index.max().strftime('%Y-%m-%d %H:%M:%S')
-                }
-            },
-            'training_data': {
-                'dates': train_series.time_index.strftime('%Y-%m-%d %H:%M:%S').tolist(),
-                'values': train_series.values().flatten().tolist()
-            },
-            'validation_data': {
-                'dates': val_series.time_index.strftime('%Y-%m-%d %H:%M:%S').tolist() if len(val_series) > 0 else [],
-                'values': val_series.values().flatten().tolist() if len(val_series) > 0 else [],
-                'forecast': val_forecast.values().flatten().tolist() if val_forecast is not None else []
-            },
-            'metrics': {
-                'mape': mape_score,
-                'rmse': rmse_score,
-                'mae': mae_score,
-                'mse': mse_score
-            }
-        }
-
-        return jsonify(response)
-
-    except Exception as e:
-        return jsonify({'error': f'训练模型时出错: {str(e)}'}), 500
-
-@app.route('/api/predict', methods=['POST'])
-def predict():
-    """使用训练好的模型进行预测"""
-    global trained_model, train_series
-    
-    try:
-        if trained_model is None:
-            return jsonify({'error': '请先训练模型'}), 400
-        
-        # 获取预测参数
-        data = request.json if request.json else {}
-        forecast_periods = int(data.get('periods', 24))  # 默认预测24小时
-        
-        # 进行预测
-        forecast = trained_model.predict(forecast_periods)
-        
-        # 计算预测的置信区间（简单估计）
-        forecast_values = forecast.values().flatten()
-        
-        # 基于训练数据的标准差估计置信区间
-        train_std = np.std(train_series.values())
-        confidence_lower = forecast_values - 1.96 * train_std
-        confidence_upper = forecast_values + 1.96 * train_std
-        
-        # 准备响应数据
-        response = {
-            'success': True,
-            'forecast': {
-                'dates': forecast.time_index.strftime('%Y-%m-%d %H:%M:%S').tolist(),
-                'values': forecast_values.tolist(),
-                'confidence_lower': confidence_lower.tolist(),
-                'confidence_upper': confidence_upper.tolist()
-            },
-            'forecast_info': {
-                'periods': forecast_periods,
-                'frequency': 'hourly',
-                'model_type': 'ARIMA'
-            }
-        }
-        
-        return jsonify(response)
-    
-    except Exception as e:
-        return jsonify({'error': f'预测时出错: {str(e)}'}), 500
 
 @app.route('/api/forecast', methods=['POST'])
 def forecast():
@@ -258,26 +137,16 @@ def forecast():
     try:
         # 获取前端传递的参数
         data = request.json if request.json else {}
+        model_type = data.get('model', 'arima')
         forecast_periods = int(data.get('periods', 24))
-        p = int(data.get('p', 2))
-        d = int(data.get('d', 1)) 
-        q = int(data.get('q', 2))
         train_ratio = float(data.get('train_ratio', 0.8))
-        trend = data.get('trend', 'c')
-        seasonal_order_P = int(data.get('seasonal_order_P', 0))
-        seasonal_order_D = int(data.get('seasonal_order_D', 0))
-        seasonal_order_Q = int(data.get('seasonal_order_Q', 0))
-        seasonal_periods = int(data.get('seasonal_periods', 24))
-        
+
         # 获取时间范围参数
         data_start_date = data.get('data_start_date')
         data_end_date = data.get('data_end_date')
         
         # 获取资源ID参数
         resource_id = data.get('resource_id')
-
-        # 构建季节性参数
-        seasonal_order = (seasonal_order_P, seasonal_order_D, seasonal_order_Q, seasonal_periods)
 
         # 加载数据，支持根据资源ID过滤
         series_data, device_id = load_metric_data(resource_id)
@@ -290,10 +159,38 @@ def forecast():
             data_end_date=data_end_date
         )
 
-        # 创建并训练ARIMA模型
-        # 注意：Darts的ARIMA实现与statsmodels略有不同，需要调整参数
-        model = ARIMA(p=p, d=d, q=q, trend=trend)
-        model.fit(train_series)
+        # 根据模型类型创建模型
+        if model_type == 'arima':
+            # ARIMA模型参数处理和创建
+            p = int(data.get('p', 2))
+            d = int(data.get('d', 1))
+            q = int(data.get('q', 2))
+            trend = data.get('trend', 'n')
+#             seasonal_order_P = int(data.get('seasonal_order_P', 0))
+#             seasonal_order_D = int(data.get('seasonal_order_D', 0))
+#             seasonal_order_Q = int(data.get('seasonal_order_Q', 0))
+#             seasonal_periods = int(data.get('seasonal_periods', 24))
+            # 构建季节性参数
+#             seasonal_order = (seasonal_order_P, seasonal_order_D, seasonal_order_Q, seasonal_periods)
+
+            model = ARIMA(p=p, d=d, q=q, trend=trend)
+            model.fit(train_series)
+            model_params = f'ARIMA({p},{d},{q}) with trend={trend}'
+        elif model_type == 'prophet':
+            # Prophet模型参数处理和创建
+            seasonality_mode = data.get('seasonality_mode', 'additive')
+            seasonality_prior_scale = float(data.get('seasonality_prior_scale', 10.0))
+            model = Prophet(
+                seasonality_mode=seasonality_mode,
+                seasonality_prior_scale=seasonality_prior_scale,
+                yearly_seasonality=data.get('yearly_seasonality', True),
+                weekly_seasonality=data.get('weekly_seasonality', True),
+                daily_seasonality=data.get('daily_seasonality', False)
+            )
+            model.fit(train_series)
+            model_params = f'Prophet(seasonality_mode={seasonality_mode}, seasonality_prior_scale={seasonality_prior_scale})'
+        else:
+            return jsonify({'error': f'不支持的模型类型: {model_type}'}), 400
 
         # 预测
         forecast = model.predict(forecast_periods)
@@ -333,8 +230,8 @@ def forecast():
                 'mse': mse_score
             },
             'model_info': {
-                'type': 'ARIMA',
-                'parameters': f'ARIMA({p},{d},{q}) with trend={trend}',
+                'type': model_type,
+                'parameters': model_params,
                 'device_id': device_id,
                 'train_size': len(train_series),
                 'val_size': len(val_series),
@@ -362,6 +259,15 @@ def get_models():
                 'd': {'default': 1, 'min': 0, 'max': 2, 'description': '差分阶数'},
                 'q': {'default': 2, 'min': 0, 'max': 5, 'description': '移动平均阶数'}
             }
+        },
+        {
+            'id': 'prophet',
+            'name': 'Prophet (时间序列预测模型)',
+            'description': 'Facebook开发的基于加法模型的时间序列预测模型，适合有季节性效应的数据',
+            'parameters': {
+                'seasonality_mode': {'default': 'additive', 'options': ['additive', 'multiplicative'], 'description': '季节性模式'},
+                'seasonality_prior_scale': {'default': 10.0, 'min': 0.01, 'max': 100.0, 'description': '季节性先验尺度'}
+            }
         }
     ]
     return jsonify(models)
@@ -382,6 +288,17 @@ def get_model_parameters(model_id):
             'seasonal_order_D': {'type': 'number', 'default': 0, 'min': 0, 'max': 2, 'description': '季节性差分阶数'},
             'seasonal_order_Q': {'type': 'number', 'default': 0, 'min': 0, 'max': 3, 'description': '季节性移动平均阶数'},
             'seasonal_periods': {'type': 'number', 'default': 24, 'min': 1, 'max': 168, 'description': '季节性周期(小时)'}
+        },
+        # 添加Prophet模型参数
+        'prophet': {
+            'seasonality_mode': {'type': 'select', 'options': ['additive', 'multiplicative'], 'default': 'additive', 'description': '季节性模式'},
+            'seasonality_prior_scale': {'type': 'number', 'default': 10.0, 'min': 0.01, 'max': 100.0, 'step': 0.01, 'description': '季节性先验尺度'},
+            'changepoint_prior_scale': {'type': 'number', 'default': 0.05, 'min': 0.001, 'max': 1.0, 'step': 0.001, 'description': '趋势变化点先验尺度'},
+            'holidays_prior_scale': {'type': 'number', 'default': 10.0, 'min': 0.01, 'max': 100.0, 'step': 0.01, 'description': '节假日先验尺度'},
+            'yearly_seasonality': {'type': 'boolean', 'default': True, 'description': '是否启用年度季节性'},
+            'weekly_seasonality': {'type': 'boolean', 'default': True, 'description': '是否启用周度季节性'},
+            'daily_seasonality': {'type': 'boolean', 'default': False, 'description': '是否启用日度季节性'},
+            'train_ratio': {'type': 'number', 'default': 0.8, 'min': 0.5, 'max': 0.95, 'step': 0.05, 'description': '训练集比例'}
         }
     }
     
@@ -427,62 +344,7 @@ def get_data_info():
             "message": str(e)
         }), 500
 
-@app.route('/api/data/preview', methods=['GET'])
-def preview_data():
-    """预览数据"""
-    try:
-        # 调用load_metric_data函数加载存储空间使用率数据，并获取时间序列数据和设备ID
-        series_data, device_id = load_metric_data()
-        
-        # 从时间序列数据中提取最近的100个数据点用于预览
-        preview_data = series_data.tail(100)
-        
-        # 初始化一个空列表，用于存储预览数据记录
-        records = []
-        # 遍历预览数据中的每个数据点
-        for i in range(len(preview_data)):
-            # 将每个数据点转换为字典格式并添加到记录列表中
-            records.append({
-                # 将时间戳转换为字符串格式 'YYYY-MM-DD HH:MM:SS'
-                'time': preview_data.index[i].strftime('%Y-%m-%d %H:%M:%S'),
-                # 添加设备ID
-                'ci_id': device_id,
-                # 将数值转换为浮点数格式
-                'value': float(preview_data.iloc[i])
-            })
-        
-        # 构建响应数据结构
-        response = {
-            # 添加设备ID
-            'device_id': device_id,
-            # 添加数据记录列表
-            'data': records,
-            # 添加总数据点数
-            'total_points': len(series_data),
-            # 添加预览数据点数
-            'preview_points': len(preview_data),
-            # 添加数据时间范围信息
-            'date_range': {
-                # 添加数据起始时间
-                'start': series_data.index.min().strftime('%Y-%m-%d %H:%M:%S'),
-                # 添加数据结束时间
-                'end': series_data.index.max().strftime('%Y-%m-%d %H:%M:%S')
-            }
-        }
-        
-        # 返回成功的JSON响应，包含状态和预览数据
-        return jsonify({
-            "status": "success",
-            "data": response
-        })
-    
-    # 捕获可能出现的异常
-    except Exception as e:
-        # 返回错误的JSON响应，包含状态和错误信息
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
+
 
 @app.route('/api/data/preview2', methods=['GET'])
 def preview_data2():
@@ -607,8 +469,6 @@ if __name__ == '__main__':
     print("API文档:")
     print("  GET  /api/health        - 健康检查")
     print("  GET  /api/models        - 获取可用模型")
-    print("  POST /api/train         - 训练ARIMA模型")
-    print("  POST /api/predict       - 使用训练好的模型预测")
     print("  POST /api/forecast      - 完整的训练和预测流程")
     print("  GET  /api/data/info     - 获取数据信息")
     print("  GET  /api/data/preview  - 预览数据")
