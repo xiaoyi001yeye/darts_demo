@@ -81,7 +81,11 @@
             <!-- 控制面板 -->
             <section class="control-panel">
                 <div class="panel-header">
-                    <h2><i class="fas fa-cogs"></i> 预测配置</h2>
+                    <h2><i class="fas fa-cogs"></i> 预测配置
+                    <button id="forecastBtn" class="btn btn-success" onclick="runForecast()" style="margin-left: auto;">
+                        <i class="fas fa-play"></i> 一键预测
+                    </button>
+                    </h2>
                 </div>
                 
                 <div class="controls-grid">
@@ -139,21 +143,6 @@
                         <!-- 动态生成的参数配置将插入这里 -->
                     </div>
                     
-                    <!-- 操作按钮 -->
-                    <div class="control-group">
-                        <div class="button-group">
-<!--                            <button id="trainBtn" class="btn btn-primary" onclick="trainModel()">-->
-<!--                                <i class="fas fa-graduation-cap"></i> 训练模型-->
-<!--                            </button>-->
-<!--                            <button id="predictBtn" class="btn btn-secondary" onclick="runPrediction()" disabled>-->
-<!--                                <i class="fas fa-crystal-ball"></i> 运行预测-->
-<!--                            </button>-->
-                            <button id="forecastBtn" class="btn btn-success" onclick="runForecast()">
-                                <i class="fas fa-play"></i> 一键预测
-                            </button>
-                        </div>
-                        <small class="help-text">可以选择分步训练和预测，或一键完成</small>
-                    </div>
                 </div>
             </section>
             

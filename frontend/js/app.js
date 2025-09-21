@@ -102,9 +102,7 @@ function displayModelParameters(parameters) {
             html += `<input type="number" id="param_${key}" class="form-control" value="${value}" ${min} ${max}>`;
         }
         
-        html += `<small class="help-text">${param.description || ''}</small>
-            </div>
-        `;
+        html += `</div>`;
     }
     
     html += '</div>';
