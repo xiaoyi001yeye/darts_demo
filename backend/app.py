@@ -2,11 +2,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import pandas as pd
 from darts import TimeSeries
-from darts.models import ARIMA
-# 添加Prophet模型导入
-from darts.models import Prophet
 from darts.metrics import mape, rmse, mae, mse
-from darts.utils.statistics import check_seasonality, plot_acf, plot_pacf
 import json
 import numpy as np
 from datetime import datetime, timedelta
@@ -14,6 +10,8 @@ import os
 import warnings
 import glob
 import sys
+# 添加模型管理器导入
+from models.model_manager import ModelManager
 
 # 设置系统编码为UTF-8
 if hasattr(sys.stdout, 'reconfigure'):
@@ -35,6 +33,9 @@ data_cache = {}
 trained_model = None
 train_series = None
 val_series = None
+
+# 创建全局模型管理器实例
+model_manager = ModelManager()
 
 def load_metric_data(resource_id=None):
     """加载存储空间使用率数据"""
@@ -160,44 +161,23 @@ def forecast():
         )
 
         # 根据模型类型创建模型
-        if model_type == 'arima':
-            # ARIMA模型参数处理和创建
-            p = int(data.get('p', 2))
-            d = int(data.get('d', 1))
-            q = int(data.get('q', 2))
-            trend = data.get('trend', 'n')
-#             seasonal_order_P = int(data.get('seasonal_order_P', 0))
-#             seasonal_order_D = int(data.get('seasonal_order_D', 0))
-#             seasonal_order_Q = int(data.get('seasonal_order_Q', 0))
-#             seasonal_periods = int(data.get('seasonal_periods', 24))
-            # 构建季节性参数
-#             seasonal_order = (seasonal_order_P, seasonal_order_D, seasonal_order_Q, seasonal_periods)
-
-            model = ARIMA(p=p, d=d, q=q, trend=trend)
-            model.fit(train_series)
-            model_params = f'ARIMA({p},{d},{q}) with trend={trend}'
-        elif model_type == 'prophet':
-            # Prophet模型参数处理和创建
-            seasonality_mode = data.get('seasonality_mode', 'additive')
-            seasonality_prior_scale = float(data.get('seasonality_prior_scale', 10.0))
-            model = Prophet(
-                seasonality_mode=seasonality_mode,
-                seasonality_prior_scale=seasonality_prior_scale,
-                yearly_seasonality=data.get('yearly_seasonality', True),
-                weekly_seasonality=data.get('weekly_seasonality', True),
-                daily_seasonality=data.get('daily_seasonality', False)
-            )
-            model.fit(train_series)
-            model_params = f'Prophet(seasonality_mode={seasonality_mode}, seasonality_prior_scale={seasonality_prior_scale})'
-        else:
+        model_obj = model_manager.get_model(model_type)
+        if not model_obj:
             return jsonify({'error': f'不支持的模型类型: {model_type}'}), 400
+            
+        # 创建并训练模型
+        model = model_obj.create_model(**data)
+        model = model_obj.fit(model, train_series)
+        
+        # 获取模型参数描述
+        model_params = str(data)  # 简化处理，实际应根据模型类型生成具体描述
 
         # 预测
-        forecast = model.predict(forecast_periods)
+        forecast = model_obj.predict(model, forecast_periods)
 
         # 在验证集上评估（如果有足够的验证数据）
         if len(val_series) >= forecast_periods:
-            val_forecast = model.predict(len(val_series))
+            val_forecast = model_obj.predict(model, len(val_series))
             actual = val_series
 
             mape_score = float(mape(actual, val_forecast))
@@ -249,63 +229,19 @@ def forecast():
 @app.route('/api/models', methods=['GET'])
 def get_models():
     """获取可用模型列表"""
-    models = [
-        {
-            'id': 'arima', 
-            'name': 'ARIMA (自回归积分滑动平均)', 
-            'description': '专用于存储空间使用率预测的ARIMA模型',
-            'parameters': {
-                'p': {'default': 2, 'min': 0, 'max': 5, 'description': '自回归阶数'},
-                'd': {'default': 1, 'min': 0, 'max': 2, 'description': '差分阶数'},
-                'q': {'default': 2, 'min': 0, 'max': 5, 'description': '移动平均阶数'}
-            }
-        },
-        {
-            'id': 'prophet',
-            'name': 'Prophet (时间序列预测模型)',
-            'description': 'Facebook开发的基于加法模型的时间序列预测模型，适合有季节性效应的数据',
-            'parameters': {
-                'seasonality_mode': {'default': 'additive', 'options': ['additive', 'multiplicative'], 'description': '季节性模式'},
-                'seasonality_prior_scale': {'default': 10.0, 'min': 0.01, 'max': 100.0, 'description': '季节性先验尺度'}
-            }
-        }
-    ]
+    models = model_manager.get_available_models()
     return jsonify(models)
 
 # 添加获取模型参数配置的接口
 @app.route('/api/model/<model_id>/parameters', methods=['GET'])
 def get_model_parameters(model_id):
     """获取指定模型的参数配置"""
-    # 定义各模型的参数配置
-    model_parameters = {
-        'arima': {
-            'p': {'type': 'number', 'default': 2, 'min': 0, 'max': 5, 'description': '自回归阶数'},
-            'd': {'type': 'number', 'default': 1, 'min': 0, 'max': 2, 'description': '差分阶数'},
-            'q': {'type': 'number', 'default': 2, 'min': 0, 'max': 5, 'description': '移动平均阶数'},
-            'train_ratio': {'type': 'number', 'default': 0.8, 'min': 0.5, 'max': 0.95, 'step': 0.05, 'description': '训练集比例'},
-            'trend': {'type': 'select', 'options': ['n', 'c', 't', 'ct'], 'default': 'n', 'description': '趋势参数'},
-            'seasonal_order_P': {'type': 'number', 'default': 0, 'min': 0, 'max': 3, 'description': '季节性自回归阶数'},
-            'seasonal_order_D': {'type': 'number', 'default': 0, 'min': 0, 'max': 2, 'description': '季节性差分阶数'},
-            'seasonal_order_Q': {'type': 'number', 'default': 0, 'min': 0, 'max': 3, 'description': '季节性移动平均阶数'},
-            'seasonal_periods': {'type': 'number', 'default': 24, 'min': 1, 'max': 168, 'description': '季节性周期(小时)'}
-        },
-        # 添加Prophet模型参数
-        'prophet': {
-            'seasonality_mode': {'type': 'select', 'options': ['additive', 'multiplicative'], 'default': 'additive', 'description': '季节性模式'},
-            'seasonality_prior_scale': {'type': 'number', 'default': 10.0, 'min': 0.01, 'max': 100.0, 'step': 0.01, 'description': '季节性先验尺度'},
-            'changepoint_prior_scale': {'type': 'number', 'default': 0.05, 'min': 0.001, 'max': 1.0, 'step': 0.001, 'description': '趋势变化点先验尺度'},
-            'holidays_prior_scale': {'type': 'number', 'default': 10.0, 'min': 0.01, 'max': 100.0, 'step': 0.01, 'description': '节假日先验尺度'},
-            'yearly_seasonality': {'type': 'boolean', 'default': True, 'description': '是否启用年度季节性'},
-            'weekly_seasonality': {'type': 'boolean', 'default': True, 'description': '是否启用周度季节性'},
-            'daily_seasonality': {'type': 'boolean', 'default': False, 'description': '是否启用日度季节性'},
-            'train_ratio': {'type': 'number', 'default': 0.8, 'min': 0.5, 'max': 0.95, 'step': 0.05, 'description': '训练集比例'}
-        }
-    }
+    parameters = model_manager.get_model_parameters(model_id)
     
-    if model_id in model_parameters:
+    if parameters:
         return jsonify({
             'model_id': model_id,
-            'parameters': model_parameters[model_id]
+            'parameters': parameters
         })
     else:
         return jsonify({'error': '模型未找到'}), 404
