@@ -69,10 +69,13 @@ function displayModelParameters(parameters) {
     let html = '<div class="parameters-grid">';
     
     for (const [key, param] of Object.entries(parameters)) {
+        // 使用"描述(参数code)"格式显示参数标签
+        const displayName = param.description ? `${param.description}(${key})` : key;
+        
         html += `
             <div class="control-group">
                 <label for="param_${key}">
-                    <i class="fas fa-sliders-h"></i> ${key}
+                    <i class="fas fa-sliders-h"></i> ${displayName}
                 </label>
         `;
         
