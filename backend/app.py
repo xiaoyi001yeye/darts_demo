@@ -173,11 +173,22 @@ def forecast():
         model_params = str(data)  # 简化处理，实际应根据模型类型生成具体描述
 
         # 预测
-        forecast = model_obj.predict(model, forecast_periods)
+        forecast_result = model_obj.predict(model, forecast_periods)
+        # 处理预测结果（可能包含置信区间）
+        if isinstance(forecast_result, tuple):
+            forecast, forecast_interval = forecast_result
+        else:
+            forecast = forecast_result
+            forecast_interval = None
 
         # 在验证集上评估（如果有足够的验证数据）
         if len(val_series) >= forecast_periods:
-            val_forecast = model_obj.predict(model, len(val_series))
+            val_forecast_result = model_obj.predict(model, len(val_series))
+            if isinstance(val_forecast_result, tuple):
+                val_forecast, val_forecast_interval = val_forecast_result
+            else:
+                val_forecast = val_forecast_result
+                val_forecast_interval = None
             actual = val_series
 
             mape_score = float(mape(actual, val_forecast))
@@ -219,7 +230,15 @@ def forecast():
                 'data_frequency': 'hourly'
             }
         }
-        
+        # 添加置信区间数据（如果存在）
+        if forecast_interval is not None:
+            response['forecast']['lower'] = forecast_interval['lower'].values().flatten().tolist()
+            response['forecast']['upper'] = forecast_interval['upper'].values().flatten().tolist()
+
+        if val_forecast_interval is not None:
+            response['validation']['forecast_lower'] = val_forecast_interval['lower'].values().flatten().tolist()
+            response['validation']['forecast_upper'] = val_forecast_interval['upper'].values().flatten().tolist()
+
         return json.dumps(response)
     
     except Exception as e:

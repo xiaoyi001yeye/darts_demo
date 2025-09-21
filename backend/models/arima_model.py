@@ -21,7 +21,8 @@ class ARIMAModel(BaseModel):
             'seasonal_order_D': ParameterConfig('number', default=0, min=0, max=2, description='季节性差分阶数'),
             'seasonal_order_Q': ParameterConfig('number', default=0, min=0, max=3, description='季节性移动平均阶数'),
             'seasonal_periods': ParameterConfig('number', default=24, min=1, max=168, description='季节性周期(小时)'),
-            'confidence_level': ParameterConfig('number', default=0.95, min=0.8, max=0.99, step=0.01, description='置信水平')
+            'confidence_level': ParameterConfig('number', default=0.95, min=0.8, max=0.99, step=0.01, description='置信水平'),
+            'num_samples': ParameterConfig('number', default=1, min=1, max=1000, description='采样数量')
         }
     
     def create_model(self, **params):
@@ -41,6 +42,8 @@ class ARIMAModel(BaseModel):
         
         # 保存置信水平参数到模型实例
         model.confidence_level = params.get('confidence_level', 0.95)
+        # 保存num_samples参数到模型实例
+        model.num_samples = int(params.get('num_samples', 1))
         
         return model
     
@@ -49,4 +52,16 @@ class ARIMAModel(BaseModel):
         return model
     
     def predict(self, model, periods):
-        return model.predict(periods, num_samples=100)
+        # 使用模型实例中保存的num_samples参数
+        forecast = model.predict(periods, num_samples=getattr(model, 'num_samples', 1))
+
+        # 添加置信区间计算（如果模型支持）
+        if hasattr(model, 'predict_interval'):
+            # 对于支持置信区间的模型
+            forecast_interval = model.predict_interval(periods, alpha=0.05)  # 95%置信区间
+            # 日志记录置信区间数据
+            print(f"ARIMA模型置信区间: {forecast_interval}")
+            return forecast, forecast_interval
+        else:
+            # 对于不支持置信区间的模型，返回None作为区间
+            return forecast, None
