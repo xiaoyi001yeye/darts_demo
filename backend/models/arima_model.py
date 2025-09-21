@@ -1,4 +1,4 @@
-from models.base_model import BaseModel
+from models.base_model import BaseModel, ParameterConfig
 from darts.models import ARIMA
 
 class ARIMAModel(BaseModel):
@@ -12,15 +12,15 @@ class ARIMAModel(BaseModel):
     
     def get_parameter_config(self):
         return {
-            'p': {'type': 'number', 'default': 2, 'min': 0, 'max': 5, 'description': '自回归阶数'},
-            'd': {'type': 'number', 'default': 1, 'min': 0, 'max': 2, 'description': '差分阶数'},
-            'q': {'type': 'number', 'default': 2, 'min': 0, 'max': 5, 'description': '移动平均阶数'},
-            'train_ratio': {'type': 'number', 'default': 0.8, 'min': 0.5, 'max': 0.95, 'step': 0.05, 'description': '训练集比例'},
-            'trend': {'type': 'select', 'options': ['n', 'c', 't', 'ct'], 'default': 'n', 'description': '趋势参数'},
-            'seasonal_order_P': {'type': 'number', 'default': 0, 'min': 0, 'max': 3, 'description': '季节性自回归阶数'},
-            'seasonal_order_D': {'type': 'number', 'default': 0, 'min': 0, 'max': 2, 'description': '季节性差分阶数'},
-            'seasonal_order_Q': {'type': 'number', 'default': 0, 'min': 0, 'max': 3, 'description': '季节性移动平均阶数'},
-            'seasonal_periods': {'type': 'number', 'default': 24, 'min': 1, 'max': 168, 'description': '季节性周期(小时)'}
+            'p': ParameterConfig('number', default=2, min=0, max=5, description='自回归阶数'),
+            'd': ParameterConfig('number', default=1, min=0, max=2, description='差分阶数'),
+            'q': ParameterConfig('number', default=2, min=0, max=5, description='移动平均阶数'),
+            'train_ratio': ParameterConfig('number', default=0.8, min=0.5, max=0.95, step=0.05, description='训练集比例'),
+            'trend': ParameterConfig('select', default='n', options=['n', 'c', 't', 'ct'], description='趋势参数'),
+            'seasonal_order_P': ParameterConfig('number', default=0, min=0, max=3, description='季节性自回归阶数'),
+            'seasonal_order_D': ParameterConfig('number', default=0, min=0, max=2, description='季节性差分阶数'),
+            'seasonal_order_Q': ParameterConfig('number', default=0, min=0, max=3, description='季节性移动平均阶数'),
+            'seasonal_periods': ParameterConfig('number', default=24, min=1, max=168, description='季节性周期(小时)')
         }
     
     def create_model(self, **params):

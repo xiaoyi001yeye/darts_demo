@@ -1,5 +1,31 @@
 from abc import ABC, abstractmethod
 
+class ParameterConfig:
+    """参数配置类，用于描述模型参数的配置信息"""
+    
+    def __init__(self, param_type, default=None, description="", **kwargs):
+        self.type = param_type
+        self.default = default
+        self.description = description
+        # 根据参数类型存储额外属性
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+    
+    def to_dict(self):
+        """将参数配置转换为字典格式"""
+        result = {
+            'type': self.type,
+            'default': self.default,
+            'description': self.description
+        }
+        
+        # 添加其他属性
+        for key, value in self.__dict__.items():
+            if key not in ['type', 'default', 'description']:
+                result[key] = value
+                
+        return result
+
 class BaseModel(ABC):
     """时间序列预测模型的抽象基类"""
     

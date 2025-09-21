@@ -239,9 +239,17 @@ def get_model_parameters(model_id):
     parameters = model_manager.get_model_parameters(model_id)
     
     if parameters:
+        # 将ParameterConfig对象转换为字典格式
+        parameters_dict = {}
+        for key, param_config in parameters.items():
+            if hasattr(param_config, 'to_dict'):
+                parameters_dict[key] = param_config.to_dict()
+            else:
+                parameters_dict[key] = param_config
+        
         return jsonify({
             'model_id': model_id,
-            'parameters': parameters
+            'parameters': parameters_dict
         })
     else:
         return jsonify({'error': '模型未找到'}), 404

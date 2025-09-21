@@ -1,4 +1,4 @@
-from models.base_model import BaseModel
+from models.base_model import BaseModel, ParameterConfig
 from darts.models import Prophet
 
 class ProphetModel(BaseModel):
@@ -12,14 +12,14 @@ class ProphetModel(BaseModel):
     
     def get_parameter_config(self):
         return {
-            'seasonality_mode': {'type': 'select', 'options': ['additive', 'multiplicative'], 'default': 'additive', 'description': '季节性模式'},
-            'seasonality_prior_scale': {'type': 'number', 'default': 10.0, 'min': 0.01, 'max': 100.0, 'step': 0.01, 'description': '季节性先验尺度'},
-            'changepoint_prior_scale': {'type': 'number', 'default': 0.05, 'min': 0.001, 'max': 1.0, 'step': 0.001, 'description': '趋势变化点先验尺度'},
-            'holidays_prior_scale': {'type': 'number', 'default': 10.0, 'min': 0.01, 'max': 100.0, 'step': 0.01, 'description': '节假日先验尺度'},
-            'yearly_seasonality': {'type': 'boolean', 'default': True, 'description': '是否启用年度季节性'},
-            'weekly_seasonality': {'type': 'boolean', 'default': True, 'description': '是否启用周度季节性'},
-            'daily_seasonality': {'type': 'boolean', 'default': False, 'description': '是否启用日度季节性'},
-            'train_ratio': {'type': 'number', 'default': 0.8, 'min': 0.5, 'max': 0.95, 'step': 0.05, 'description': '训练集比例'}
+            'seasonality_mode': ParameterConfig('select', default='additive', options=['additive', 'multiplicative'], description='季节性模式'),
+            'seasonality_prior_scale': ParameterConfig('number', default=10.0, min=0.01, max=100.0, step=0.01, description='季节性先验尺度'),
+            'changepoint_prior_scale': ParameterConfig('number', default=0.05, min=0.001, max=1.0, step=0.001, description='趋势变化点先验尺度'),
+            'holidays_prior_scale': ParameterConfig('number', default=10.0, min=0.01, max=100.0, step=0.01, description='节假日先验尺度'),
+            'yearly_seasonality': ParameterConfig('boolean', default=True, description='是否启用年度季节性'),
+            'weekly_seasonality': ParameterConfig('boolean', default=True, description='是否启用周度季节性'),
+            'daily_seasonality': ParameterConfig('boolean', default=False, description='是否启用日度季节性'),
+            'train_ratio': ParameterConfig('number', default=0.8, min=0.5, max=0.95, step=0.05, description='训练集比例')
         }
     
     def create_model(self, **params):
