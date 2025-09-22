@@ -12,7 +12,7 @@ import glob
 import sys
 # 添加模型管理器导入
 from models.model_manager import ModelManager
-
+from loguru import logger
 # 设置系统编码为UTF-8
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
@@ -242,7 +242,8 @@ def forecast():
         return json.dumps(response)
     
     except Exception as e:
-        print(str(e))
+        logger.exception(f"预测时出错: {str(e)}")
+#         log.error(f"预测时出错: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/models', methods=['GET'])
