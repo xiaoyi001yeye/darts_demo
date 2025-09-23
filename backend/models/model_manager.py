@@ -1,5 +1,6 @@
 from models.arima_model import ARIMAModel
 from models.prophet_model import ProphetModel
+from models.auto_arima_model import AutoARIMAModel
 
 class ModelManager:
     """模型管理器，用于注册和管理所有预测模型"""
@@ -12,6 +13,7 @@ class ModelManager:
         """注册默认模型"""
         self.register_model(ARIMAModel())
         self.register_model(ProphetModel())
+        self.register_model(AutoARIMAModel())
     
     def register_model(self, model):
         """注册新模型"""
